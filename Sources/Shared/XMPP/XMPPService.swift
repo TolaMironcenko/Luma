@@ -1,0 +1,2819 @@
+import Combine
+import Foundation
+import Martin
+import MartinOMEMO
+import WebRTC
+
+private struct BufferedArchiveStanza {
+    let queryID: String
+    let message: Message
+    let timestamp: Date
+    let archiveID: String
+}
+
+private struct BufferedArchivePage {
+    let stanzas: [BufferedArchiveStanza]
+    let overflowed: Bool
+    let rejectedSource: Bool
+}
+
+/// Martin publishes every MAM result synchronously on its parser queue. Keep
+/// that burst off the main queue and hand the completed page to XMPPService
+/// only after the final IQ callback. Message instances are immutable after the
+/// publisher returns; the lock provides the ownership hand-off.
+private final class ArchiveStanzaInbox: @unchecked Sendable {
+    private let lock = NSLock()
+    private let maximumCount: Int
+    private var activeQueryID: String?
+    private var allowedSources: Set<String> = []
+    private var stanzas: [BufferedArchiveStanza] = []
+    private var overflowed = false
+    private var rejectedSource = false
+
+    init(maximumCount: Int) {
+        self.maximumCount = maximumCount
+    }
+
+    func begin(queryID: String, allowedSources: Set<String>) {
+        lock.lock()
+        defer { lock.unlock() }
+        activeQueryID = queryID
+        self.allowedSources = Set(allowedSources.map { $0.lowercased() })
+        stanzas.removeAll(keepingCapacity: true)
+        overflowed = false
+        rejectedSource = false
+    }
+
+    func append(
+        queryID: String,
+        source: BareJID,
+        message: Message,
+        timestamp: Date,
+        archiveID: String
+    ) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard activeQueryID == queryID else { return }
+        guard allowedSources.contains(source.stringValue.lowercased()) else {
+            rejectedSource = true
+            return
+        }
+        guard stanzas.count < maximumCount else {
+            overflowed = true
+            return
+        }
+        stanzas.append(BufferedArchiveStanza(
+            queryID: queryID,
+            message: message,
+            timestamp: timestamp,
+            archiveID: archiveID
+        ))
+    }
+
+    func take(queryID: String) -> BufferedArchivePage {
+        lock.lock()
+        defer { lock.unlock() }
+        guard activeQueryID == queryID else {
+            return BufferedArchivePage(stanzas: [], overflowed: false, rejectedSource: false)
+        }
+        let page = BufferedArchivePage(
+            stanzas: stanzas,
+            overflowed: overflowed,
+            rejectedSource: rejectedSource
+        )
+        activeQueryID = nil
+        allowedSources.removeAll(keepingCapacity: true)
+        stanzas.removeAll(keepingCapacity: true)
+        overflowed = false
+        rejectedSource = false
+        return page
+    }
+
+    func cancel(queryID: String? = nil) {
+        lock.lock()
+        defer { lock.unlock() }
+        if let queryID, activeQueryID != queryID { return }
+        activeQueryID = nil
+        allowedSources.removeAll(keepingCapacity: true)
+        stanzas.removeAll(keepingCapacity: true)
+        overflowed = false
+        rejectedSource = false
+    }
+}
+
+@MainActor
+final class XMPPService {
+    enum ConnectionStatus: Equatable, Sendable {
+        case disconnected(reason: String?)
+        case connecting
+        case connected
+    }
+
+    struct MessageEnvelope: Sendable {
+        let id: String
+        let peerJID: String
+        let senderJID: String
+        let body: String
+        let timestamp: Date
+        let isOutgoing: Bool
+        let security: ChatMessage.Security
+        let kind: ChatMessage.Kind
+        let remoteAttachmentURL: String?
+        let localFilename: String?
+        let mimeType: String?
+        let duration: TimeInterval?
+        let byteCount: Int?
+        let fingerprint: String?
+        let correctionTargetID: String?
+        let replyToID: String?
+        let replyToJID: String?
+        let replyPreview: String?
+        let stanzaID: String?
+        let senderDisplayName: String?
+        let isGroupMessage: Bool
+        let isArchived: Bool
+    }
+
+    struct ReplyReference: Sendable {
+        let id: String
+        let authorJID: String?
+        let fallbackAuthor: String
+        let preview: String
+    }
+
+    struct RoomStateEnvelope: Sendable {
+        let roomJID: String
+        let nickname: String
+        let joined: Bool
+        let occupantCount: Int
+    }
+
+    struct RoomInvitationEnvelope: Sendable {
+        let roomJID: String
+        let inviterJID: String?
+        let reason: String?
+        let password: String?
+    }
+
+    struct RetractionEnvelope: Sendable {
+        let peerJID: String
+        let senderJID: String
+        let targetID: String
+        let retractionID: String
+        let timestamp: Date
+        let isOutgoing: Bool
+    }
+
+    struct ReactionEnvelope: Sendable {
+        let peerJID: String
+        let senderJID: String
+        let targetID: String
+        let emojis: [String]
+        let timestamp: Date
+        let isOutgoing: Bool
+        let isGroupMessage: Bool
+    }
+
+    struct ChatStateEnvelope: Sendable {
+        let peerJID: String
+        let senderJID: String
+        let senderDisplayName: String?
+        let state: ChatTypingState
+        let isGroupMessage: Bool
+    }
+
+    struct MediaSendResult: Sendable {
+        let remoteURL: String
+        let fingerprint: String?
+    }
+
+    enum ArchiveMutation: Sendable {
+        case message(MessageEnvelope)
+        case retraction(RetractionEnvelope)
+        case reaction(ReactionEnvelope)
+    }
+
+    enum Event: Sendable {
+        case connection(ConnectionStatus)
+        case rosterItem(jid: String, name: String?)
+        case rosterRemoved(jid: String)
+        case presence(jid: String, online: Bool)
+        case message(MessageEnvelope)
+        case retraction(RetractionEnvelope)
+        case reaction(ReactionEnvelope)
+        case chatState(ChatStateEnvelope)
+        case groupMessageEcho(roomJID: String, messageID: String, stanzaID: String, senderJID: String)
+        case roomState(RoomStateEnvelope)
+        case roomInvitation(RoomInvitationEnvelope)
+        case avatar(jid: String, data: Data)
+        case delivered(messageID: String)
+        case omemo(ready: Bool, ownFingerprint: String?)
+        case archiveBatch([ArchiveMutation])
+        case archiveSyncing(Bool)
+        case archiveSyncCompleted(ArchiveSyncCheckpoint)
+        case call(CallSnapshot?)
+        case callHistory(CallHistoryEntry)
+        case callError(String)
+        case recoverableError(String)
+    }
+
+    var eventHandler: ((Event) -> Void)?
+
+    private let callEngine: LumaCallEngine
+    private var client: XMPPClient?
+    private var omemoStorage: LumaOMEMOStore?
+    private var cancellables: Set<AnyCancellable> = []
+    private var account: AccountConfiguration?
+    private var archiveSyncStarted = false
+    private var archiveSyncCompletedForConnection = false
+    private var archiveSyncCheckpoint: ArchiveSyncCheckpoint?
+    private var archiveSyncQueryStartedAt: Date?
+    private var archiveSyncIndicatorVisible = false
+    private var archivePagination = ArchiveSyncPagination()
+    private var archiveRetryTask: Task<Void, Never>?
+    private var archiveQueryTimeoutTask: Task<Void, Never>?
+    private var archiveQueryCompletionTask: Task<Void, Never>?
+    private var archiveActiveQueryID: String?
+    private var archiveResumeAfter: String?
+    private var archiveWorkBudget = ArchiveSyncWorkBudget()
+    private var archiveHighWatermark: Date?
+    private var archiveLastCompletedCursor: String?
+    private var archiveHasCompletedPage = false
+    private var archiveCursorFallbackUsed = false
+    private var archivePassMutations: [ArchiveMutation] = []
+    private var archiveIsBootstrapQuery = false
+    private var archiveRetrySuppressedUntilActivation = false
+    private var archiveSyncSuspended = false
+    private var archiveResumeAfterMediaWorkTask: Task<Void, Never>?
+    private var archiveStanzaBuffer: [BufferedArchiveStanza] = []
+    private var archiveBufferOverflowed = false
+    private var archiveRejectedSource = false
+    private let archiveStanzaInbox = ArchiveStanzaInbox(
+        maximumCount: ArchiveMessageBatchPolicy.maximumBufferedStanzas
+    )
+    private var avatarRequests: Set<String> = []
+    private var observedRoomJIDs: Set<String> = []
+    private var roomOccupantsByJID: [String: [MucOccupant]] = [:]
+    private var roomRealJIDByNickname: [String: [String: BareJID]] = [:]
+    private var omemoConfiguredRoomJIDs: Set<String> = []
+    private var chatStatesEnabled = true
+    private var knownChatStatePeers: Set<String> = []
+    private let archivePageSize = ArchiveMessageBatchPolicy.pageSize
+    private let archiveBootstrapMessageLimit = ArchiveMessageBatchPolicy.bootstrapMessageLimit
+    private let archiveApplyBatchSize = ArchiveMessageBatchPolicy.decodeSliceSize
+    private let archiveForegroundRefreshInterval: TimeInterval = 60
+    private static let replyNamespace = "urn:xmpp:reply:0"
+    private static let fallbackNamespace = "urn:xmpp:fallback:0"
+    private static let retractionNamespace = "urn:xmpp:message-retract:1"
+    private static let reactionsNamespace = "urn:xmpp:reactions:0"
+    private static let stanzaIDNamespace = "urn:xmpp:sid:0"
+    private static let extendedAddressingNamespace = "http://jabber.org/protocol/address"
+
+    init(callEngine: LumaCallEngine? = nil) {
+        let callEngine = callEngine ?? LumaCallEngine()
+        self.callEngine = callEngine
+        callEngine.snapshotHandler = { [weak self] snapshot in
+            self?.eventHandler?(.call(snapshot))
+        }
+        callEngine.historyHandler = { [weak self] entry in
+            self?.eventHandler?(.callHistory(entry))
+        }
+        callEngine.errorHandler = { [weak self] message in
+            self?.eventHandler?(.callError(message))
+        }
+    }
+
+    var connectionStatus: ConnectionStatus {
+        guard let client else { return .disconnected(reason: nil) }
+        switch client.state {
+        case .connecting, .disconnecting:
+            return .connecting
+        case .connected:
+            return .connected
+        case .disconnected(let reason):
+            return .disconnected(reason: Self.reasonText(reason))
+        }
+    }
+
+    func connect(
+        account: AccountConfiguration,
+        password: String,
+        archiveCheckpoint: ArchiveSyncCheckpoint? = nil
+    ) async throws {
+        await disconnect()
+        cancellables.removeAll()
+        archiveSyncStarted = false
+        archiveSyncCompletedForConnection = false
+        archiveSyncCheckpoint = archiveCheckpoint
+        archiveSyncQueryStartedAt = nil
+        archivePagination = ArchiveSyncPagination()
+        archiveRetryTask?.cancel()
+        archiveRetryTask = nil
+        archiveQueryTimeoutTask?.cancel()
+        archiveQueryTimeoutTask = nil
+        archiveQueryCompletionTask?.cancel()
+        archiveQueryCompletionTask = nil
+        archiveActiveQueryID = nil
+        archiveResumeAfter = nil
+        archiveWorkBudget = ArchiveSyncWorkBudget()
+        archiveHighWatermark = nil
+        archiveLastCompletedCursor = archiveCheckpoint?.cursor
+        archiveHasCompletedPage = false
+        archiveCursorFallbackUsed = false
+        archivePassMutations.removeAll(keepingCapacity: false)
+        archiveIsBootstrapQuery = false
+        archiveRetrySuppressedUntilActivation = false
+        archiveStanzaBuffer.removeAll(keepingCapacity: false)
+        archiveBufferOverflowed = false
+        archiveRejectedSource = false
+        archiveStanzaInbox.cancel()
+        setArchiveSyncIndicator(false)
+        avatarRequests.removeAll()
+        observedRoomJIDs.removeAll()
+        roomOccupantsByJID.removeAll()
+        roomRealJIDByNickname.removeAll()
+        omemoConfiguredRoomJIDs.removeAll()
+        knownChatStatePeers.removeAll()
+
+        let account = try account.validated()
+        self.account = account
+
+        let client = XMPPClient()
+        let omemoStorage = LumaOMEMOStore(accountJID: account.normalizedJID)
+        guard let signalContext = SignalContext(withStorage: omemoStorage) else {
+            throw LumaXMPPError.omemoInitializationFailed
+        }
+
+        configureModules(client: client, signalContext: signalContext, omemoStorage: omemoStorage)
+        configureConnection(client: client, account: account, password: password)
+        subscribe(to: client, omemoStorage: omemoStorage)
+
+        self.client = client
+        self.omemoStorage = omemoStorage
+        callEngine.attach(client: client)
+        eventHandler?(.connection(.connecting))
+
+        do {
+            try await client.loginAndWait()
+            eventHandler?(.connection(.connected))
+            fetchAvatar(for: account.normalizedJID)
+            startArchiveSyncIfAvailable()
+        } catch {
+            callEngine.detach()
+            eventHandler?(.connection(.disconnected(reason: error.localizedDescription)))
+            throw LumaXMPPError.connection(error.localizedDescription)
+        }
+    }
+
+    func disconnect() async {
+        callEngine.detach()
+        archiveRetryTask?.cancel()
+        archiveRetryTask = nil
+        archiveQueryTimeoutTask?.cancel()
+        archiveQueryTimeoutTask = nil
+        archiveQueryCompletionTask?.cancel()
+        archiveQueryCompletionTask = nil
+        archiveActiveQueryID = nil
+        archiveResumeAfter = nil
+        archiveWorkBudget = ArchiveSyncWorkBudget()
+        archiveHighWatermark = nil
+        archiveLastCompletedCursor = archiveSyncCheckpoint?.cursor
+        archiveHasCompletedPage = false
+        archiveCursorFallbackUsed = false
+        archivePassMutations.removeAll(keepingCapacity: false)
+        archiveIsBootstrapQuery = false
+        archiveRetrySuppressedUntilActivation = false
+        archiveStanzaBuffer.removeAll(keepingCapacity: false)
+        archiveBufferOverflowed = false
+        archiveRejectedSource = false
+        archiveStanzaInbox.cancel()
+        if archiveSyncStarted, let client {
+            client.module(.omemo).mamSyncFinished(for: nil)
+        }
+        setArchiveSyncIndicator(false)
+        archiveSyncStarted = false
+        archiveSyncCompletedForConnection = false
+        archiveSyncQueryStartedAt = nil
+        archivePagination = ArchiveSyncPagination()
+        guard let client else { return }
+        if client.state == .connected() || client.state == .connecting {
+            try? await client.disconnect(force: false)
+        }
+        self.client = nil
+        omemoStorage?.flushPendingPersistence()
+        omemoStorage = nil
+        cancellables.removeAll()
+        avatarRequests.removeAll()
+        observedRoomJIDs.removeAll()
+        roomOccupantsByJID.removeAll()
+        roomRealJIDByNickname.removeAll()
+        omemoConfiguredRoomJIDs.removeAll()
+        knownChatStatePeers.removeAll()
+        eventHandler?(.connection(.disconnected(reason: nil)))
+    }
+
+    func setChatStatesEnabled(_ enabled: Bool) {
+        chatStatesEnabled = enabled
+    }
+
+    func prepareDirectChat(with recipient: String) {
+        guard let client, client.state == .connected() else { return }
+        let peer = BareJID(recipient.lowercased())
+        let manager = client.module(.message).chatManager
+        if manager.chat(for: client, with: peer) == nil {
+            _ = manager.createChat(for: client, with: peer)
+        }
+    }
+
+    func setApplicationActive(_ active: Bool) {
+        guard let client, client.state == .connected() else { return }
+        _ = client.module(.csi).setState(active)
+        if active {
+            archiveRetrySuppressedUntilActivation = false
+            refreshArchiveIfNeeded(client: client)
+        } else {
+            // iOS may freeze network callbacks and timeout tasks while the
+            // scene is inactive. Close the visible MAM pass now so it cannot
+            // return with a stale spinner after the app becomes active again.
+            pauseArchiveSync(client: client)
+        }
+    }
+
+    /// Media staging, encryption and MAM decryption compete for main-thread and
+    /// I/O time. Keep MAM finite and paused until camera/gallery work and the
+    /// corresponding upload have released their resources.
+    func setArchiveSyncSuspendedForMediaWork(_ suspended: Bool) {
+        archiveResumeAfterMediaWorkTask?.cancel()
+        archiveResumeAfterMediaWorkTask = nil
+
+        if suspended {
+            guard !archiveSyncSuspended else { return }
+            archiveSyncSuspended = true
+            if let client, client.state == .connected() {
+                pauseArchiveSync(client: client)
+            }
+            return
+        }
+
+        guard archiveSyncSuspended else { return }
+        archiveResumeAfterMediaWorkTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(
+                nanoseconds: ArchiveSyncRecoveryPolicy.resumeAfterCaptureDelayNanoseconds
+            )
+            guard !Task.isCancelled, let self else { return }
+            self.archiveResumeAfterMediaWorkTask = nil
+            self.archiveSyncSuspended = false
+            guard let client = self.client,
+                  client.state == .connected() else { return }
+            self.startArchiveSyncIfAvailable()
+        }
+    }
+
+    func reconnectIfNeeded(password: String) async throws {
+        guard connectionStatus != .connected, let account else { return }
+        try await connect(
+            account: account,
+            password: password,
+            archiveCheckpoint: archiveSyncCheckpoint
+        )
+    }
+
+    func startCall(to peerJID: String, withVideo: Bool) async throws {
+        try await withCheckedThrowingContinuation { continuation in
+            callEngine.startCall(to: peerJID, withVideo: withVideo) { result in
+                continuation.resume(with: result)
+            }
+        }
+    }
+
+    func answerCall() async throws {
+        try await withCheckedThrowingContinuation { continuation in
+            callEngine.answerCall { result in
+                continuation.resume(with: result)
+            }
+        }
+    }
+
+    func rejectCall() {
+        callEngine.rejectCall()
+    }
+
+    func endCall() {
+        callEngine.endCall()
+    }
+
+    func setCallMuted(_ muted: Bool) {
+        callEngine.setMuted(muted)
+    }
+
+    func setCallCameraEnabled(_ enabled: Bool) {
+        callEngine.setCameraEnabled(enabled)
+    }
+
+    func setCallSpeakerEnabled(_ enabled: Bool) {
+        callEngine.setSpeakerEnabled(enabled)
+    }
+
+    func switchCallCamera() {
+        callEngine.switchCamera()
+    }
+
+    func localCallVideoTrack(for callID: UUID) -> RTCVideoTrack? {
+        callEngine.localVideoTrack(for: callID)
+    }
+
+    func remoteCallVideoTrack(for callID: UUID) -> RTCVideoTrack? {
+        callEngine.remoteVideoTrack(for: callID)
+    }
+
+    func joinRoom(
+        roomJID rawRoomJID: String,
+        nickname rawNickname: String,
+        password: String? = nil
+    ) async throws {
+        guard let client, client.state == .connected() else {
+            throw LumaXMPPError.notConnected
+        }
+        let roomJID = rawRoomJID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let parts = roomJID.split(separator: "@", maxSplits: 1, omittingEmptySubsequences: false)
+        guard parts.count == 2, !parts[0].isEmpty, !parts[1].isEmpty else {
+            throw LumaXMPPError.invalidRoomJID
+        }
+        let nickname = rawNickname.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !nickname.isEmpty else { throw LumaXMPPError.emptyRoomNickname }
+
+        let muc = client.module(.muc)
+        let result: RoomJoinResult = try await withCheckedThrowingContinuation { continuation in
+            muc.join(
+                roomName: String(parts[0]),
+                mucServer: String(parts[1]),
+                nickname: nickname,
+                password: password
+            ) { result in
+                switch result {
+                case .success(let value): continuation.resume(returning: value)
+                case .failure(let error): continuation.resume(throwing: error)
+                }
+            }
+        }
+
+        let room: RoomProtocol
+        switch result {
+        case .created(let createdRoom):
+            room = createdRoom
+            do {
+                try await configureInstantRoom(createdRoom, using: muc)
+            } catch {
+                try await muc.leave(room: createdRoom)
+                throw error
+            }
+        case .joined(let joinedRoom):
+            room = joinedRoom
+        }
+        observe(room: room)
+        eventHandler?(.roomState(RoomStateEnvelope(
+            roomJID: room.jid.stringValue,
+            nickname: room.nickname,
+            joined: room.state == .joined,
+            occupantCount: 0
+        )))
+    }
+
+    func leaveRoom(roomJID: String) {
+        guard let client else { return }
+        let normalized = roomJID.lowercased()
+        let muc = client.module(.muc)
+        guard let room = muc.roomManager.room(for: client, with: BareJID(normalized)) else { return }
+        muc.leave(room: room)
+        observedRoomJIDs.remove(normalized)
+        roomOccupantsByJID.removeValue(forKey: normalized)
+        roomRealJIDByNickname.removeValue(forKey: normalized)
+        omemoConfiguredRoomJIDs.remove(normalized)
+        eventHandler?(.roomState(RoomStateEnvelope(
+            roomJID: normalized,
+            nickname: room.nickname,
+            joined: false,
+            occupantCount: 0
+        )))
+    }
+
+    func inviteMembers(_ jids: [String], to roomJID: String) async throws {
+        guard let client, client.state == .connected() else {
+            throw LumaXMPPError.notConnected
+        }
+        let normalized = roomJID.lowercased()
+        let muc = client.module(.muc)
+        guard let room = muc.roomManager.room(for: client, with: BareJID(normalized)),
+              room.state == .joined else {
+            throw LumaXMPPError.roomNotJoined
+        }
+        let invitees = jids.map {
+            JID($0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
+        }
+        let ownAffiliation = room.occupant(nickname: room.nickname)?.affiliation ?? room.affiliation
+        if ownAffiliation == .owner || ownAffiliation == .admin {
+            let owners = try? await roomAffiliations(
+                in: room,
+                affiliation: .owner,
+                using: muc
+            )
+            let admins = try? await roomAffiliations(
+                in: room,
+                affiliation: .admin,
+                using: muc
+            )
+            if let owners, let admins {
+                let privilegedJIDs = Set((owners + admins).map { $0.jid.bareJid })
+                let memberships = invitees
+                    .filter { !privilegedJIDs.contains($0.bareJid) }
+                    .map {
+                        MucModule.RoomAffiliation(jid: $0, affiliation: .member)
+                    }
+                if !memberships.isEmpty {
+                    try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                        muc.setRoomAffiliations(to: room, changedAffiliations: memberships) { result in
+                            continuation.resume(with: result)
+                        }
+                    }
+                }
+            }
+        }
+        for invitee in invitees {
+            try await muc.invite(
+                to: room,
+                invitee: invitee,
+                reason: "Приглашение в групповой чат Luma"
+            )
+        }
+    }
+
+    func sendText(
+        _ text: String,
+        to recipient: String,
+        messageID: String,
+        encrypted: Bool,
+        outOfBandURL: String? = nil,
+        replacingMessageID: String? = nil,
+        replyTo: ReplyReference? = nil,
+        isGroup: Bool = false
+    ) async throws -> String? {
+        guard let client, client.state == .connected() else {
+            throw LumaXMPPError.notConnected
+        }
+
+        let wireBody: String
+        let replyFallback: (prefix: String, scalarCount: Int)?
+        if let replyTo {
+            let fallback = MessageReplyFallback.make(
+                author: replyTo.fallbackAuthor,
+                preview: replyTo.preview
+            )
+            wireBody = fallback.prefix + text
+            replyFallback = fallback
+        } else {
+            wireBody = text
+            replyFallback = nil
+        }
+
+        if isGroup {
+            let roomJID = BareJID(recipient.lowercased())
+            let muc = client.module(.muc)
+            guard let room = muc.roomManager.room(for: client, with: roomJID),
+                  room.state == .joined else {
+                throw LumaXMPPError.roomNotJoined
+            }
+            let message = room.createMessage(text: wireBody, id: messageID)
+            message.lastMessageCorrectionId = replacingMessageID
+            if chatStatesEnabled { message.chatState = .active }
+            addReply(replyTo, fallback: replyFallback, to: message)
+            if !encrypted, let outOfBandURL { message.oob = outOfBandURL }
+            if encrypted {
+                guard let omemo = client.moduleOrNil(.omemo), omemo.isReady else {
+                    throw LumaXMPPError.omemoNotReady
+                }
+                let recipients = try await groupOMEMORecipients(
+                    in: room,
+                    using: muc,
+                    client: client
+                )
+                let encryptedMessage = try await encrypt(
+                    message,
+                    forGroupRecipients: recipients,
+                    using: omemo
+                )
+                try await room.send(message: encryptedMessage.message)
+                return encryptedMessage.fingerprint
+            } else {
+                try await room.send(message: message)
+                return nil
+            }
+        }
+
+        let peer = BareJID(recipient.lowercased())
+        let manager = client.module(.message).chatManager
+        guard let chat = manager.chat(for: client, with: peer) ?? manager.createChat(for: client, with: peer) else {
+            throw LumaXMPPError.cannotCreateChat
+        }
+
+        let message = chat.createMessage(text: wireBody, id: messageID)
+        message.lastMessageCorrectionId = replacingMessageID
+        if chatStatesEnabled { message.chatState = .active }
+        addReply(replyTo, fallback: replyFallback, to: message)
+        if !encrypted, let outOfBandURL {
+            message.oob = outOfBandURL
+        }
+        if encrypted {
+            guard let omemo = client.moduleOrNil(.omemo), omemo.isReady else {
+                throw LumaXMPPError.omemoNotReady
+            }
+            let encryptedMessage = try await encrypt(message, using: omemo)
+            try await chat.send(message: encryptedMessage.message)
+            return encryptedMessage.fingerprint
+        } else {
+            try await chat.send(message: message)
+            return nil
+        }
+    }
+
+    func sendRetraction(
+        to recipient: String,
+        targetID: String,
+        retractionID: String,
+        encrypted: Bool
+    ) async throws {
+        guard let client, client.state == .connected() else {
+            throw LumaXMPPError.notConnected
+        }
+
+        let peer = BareJID(recipient.lowercased())
+        let manager = client.module(.message).chatManager
+        guard let chat = manager.chat(for: client, with: peer) ?? manager.createChat(for: client, with: peer) else {
+            throw LumaXMPPError.cannotCreateChat
+        }
+
+        let fallbackText = "/me удалил(а) сообщение. Обновите клиент, если оно всё ещё отображается."
+        let message = chat.createMessage(text: fallbackText, id: retractionID)
+        let retract = Element(name: "retract", xmlns: Self.retractionNamespace)
+        retract.setAttribute("id", value: targetID)
+        message.addChild(retract)
+
+        let fallback = Element(name: "fallback", xmlns: Self.fallbackNamespace)
+        fallback.setAttribute("for", value: Self.retractionNamespace)
+        message.addChild(fallback)
+        message.hints = [.store]
+
+        if encrypted {
+            guard let omemo = client.moduleOrNil(.omemo), omemo.isReady else {
+                throw LumaXMPPError.omemoNotReady
+            }
+            let encryptedMessage = try await encrypt(message, using: omemo)
+            try await chat.send(message: encryptedMessage.message)
+        } else {
+            try await chat.send(message: message)
+        }
+    }
+
+    func sendReactions(
+        to recipient: String,
+        targetID: String,
+        emojis: [String],
+        reactionMessageID: String,
+        isGroup: Bool
+    ) async throws {
+        guard let client, client.state == .connected() else {
+            throw LumaXMPPError.notConnected
+        }
+        let normalizedTarget = targetID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedTarget.isEmpty else { return }
+
+        let reactions = Element(name: "reactions", xmlns: Self.reactionsNamespace)
+        reactions.setAttribute("id", value: normalizedTarget)
+        for emoji in MessageReactionPolicy.sanitized(emojis) {
+            reactions.addChild(Element(name: "reaction", cdata: emoji))
+        }
+
+        if isGroup {
+            let roomJID = BareJID(recipient.lowercased())
+            let muc = client.module(.muc)
+            guard let room = muc.roomManager.room(for: client, with: roomJID),
+                  room.state == .joined else {
+                throw LumaXMPPError.roomNotJoined
+            }
+            let message = room.createMessage(id: reactionMessageID, type: .groupchat)
+            message.addChild(reactions)
+            message.hints = [.store]
+            try await room.send(message: message)
+            return
+        }
+
+        let peer = BareJID(recipient.lowercased())
+        let manager = client.module(.message).chatManager
+        guard let chat = manager.chat(for: client, with: peer)
+            ?? manager.createChat(for: client, with: peer) else {
+            throw LumaXMPPError.cannotCreateChat
+        }
+        let message = chat.createMessage(id: reactionMessageID, type: .chat)
+        message.addChild(reactions)
+        message.hints = [.store]
+        try await chat.send(message: message)
+    }
+
+    func sendChatState(
+        _ state: ChatTypingState,
+        to recipient: String,
+        isGroup: Bool
+    ) async throws {
+        guard chatStatesEnabled,
+              let client,
+              client.state == .connected() else { return }
+
+        let martinState = Self.martinChatState(state)
+        if isGroup {
+            let roomJID = BareJID(recipient.lowercased())
+            let muc = client.module(.muc)
+            guard let room = muc.roomManager.room(for: client, with: roomJID),
+                  room.state == .joined else { return }
+            let message = room.createMessage(id: UUID().uuidString, type: .groupchat)
+            message.chatState = martinState
+            try await room.send(message: message)
+            return
+        }
+
+        let peer = BareJID(recipient.lowercased())
+        let chatStateModule = client.module(.chatStateNotifications)
+        let hasSupport = knownChatStatePeers.contains(peer.stringValue.lowercased())
+            || chatStateModule.hasSupport(jid: peer)
+        guard hasSupport else { return }
+
+        let manager = client.module(.message).chatManager
+        guard let chat = manager.chat(for: client, with: peer)
+            ?? manager.createChat(for: client, with: peer) else { return }
+        let message = chat.createMessage(id: UUID().uuidString, type: .chat)
+        message.chatState = martinState
+        try await chat.send(message: message)
+    }
+
+    func uploadAndSendMedia(
+        data: Data,
+        filename: String,
+        mimeType: String,
+        kind: ChatMessage.Kind,
+        duration: TimeInterval?,
+        to recipient: String,
+        messageID: String,
+        encrypted: Bool,
+        isGroup: Bool = false
+    ) async throws -> MediaSendResult {
+        guard let client, client.state == .connected() else {
+            throw LumaXMPPError.notConnected
+        }
+
+        let uploadData: Data
+        let uploadFilename: String
+        let uploadMimeType: String
+        var decryptionFragment: String?
+        let transportFilename = MediaMetadata.transportFilename(
+            originalFilename: filename,
+            kind: kind,
+            duration: duration
+        )
+        if encrypted {
+            guard let omemo = client.moduleOrNil(.omemo), omemo.isReady else {
+                throw LumaXMPPError.omemoNotReady
+            }
+            switch omemo.encryptFile(data: data) {
+            case .success(let value):
+                uploadData = value.0
+                decryptionFragment = value.1
+            case .failure:
+                throw LumaXMPPError.fileEncryptionFailed
+            }
+            // XEP-0454 uses aesgcm as the URI scheme, not as a filename
+            // extension. Keeping the original extension lets Conversations,
+            // Monal and other clients recover the media type after decrypting.
+            uploadFilename = transportFilename
+            uploadMimeType = "application/octet-stream"
+        } else {
+            uploadData = data
+            uploadFilename = transportFilename
+            uploadMimeType = mimeType
+        }
+
+        let uploadModule = client.module(.httpFileUpload)
+        let components: [HttpFileUploadModule.UploadComponent]
+        do {
+            components = try await uploadModule.findHttpUploadComponents()
+        } catch {
+            throw LumaXMPPError.uploadDiscoveryFailed(error.localizedDescription)
+        }
+        guard let component = components
+            .filter({ $0.maxSize >= uploadData.count })
+            .max(by: { $0.maxSize < $1.maxSize }) else {
+            throw LumaXMPPError.uploadUnavailable(size: uploadData.count)
+        }
+
+        let slot: HttpFileUploadModule.Slot
+        do {
+            slot = try await uploadModule.requestUploadSlot(
+                componentJid: component.jid,
+                filename: uploadFilename,
+                size: uploadData.count,
+                contentType: uploadMimeType
+            )
+        } catch {
+            throw LumaXMPPError.uploadSlotFailed(error.localizedDescription)
+        }
+        guard slot.putUri.scheme?.lowercased() == "https",
+              slot.getUri.scheme?.lowercased() == "https" else {
+            throw LumaXMPPError.insecureUploadURL
+        }
+
+        var request = URLRequest(url: slot.putUri)
+        request.httpMethod = "PUT"
+        request.timeoutInterval = 120
+        request.setValue(uploadMimeType, forHTTPHeaderField: "Content-Type")
+        for (name, value) in slot.putHeaders {
+            request.setValue(value, forHTTPHeaderField: name)
+        }
+        let response: URLResponse
+        let uploadConfiguration = URLSessionConfiguration.ephemeral
+        uploadConfiguration.timeoutIntervalForRequest = 120
+        uploadConfiguration.timeoutIntervalForResource = 300
+        uploadConfiguration.waitsForConnectivity = false
+        let uploadSession = URLSession(configuration: uploadConfiguration)
+        defer { uploadSession.finishTasksAndInvalidate() }
+        do {
+            let (_, receivedResponse) = try await uploadSession.upload(for: request, from: uploadData)
+            response = receivedResponse
+        } catch {
+            throw LumaXMPPError.uploadTransportFailed(error.localizedDescription)
+        }
+        guard let http = response as? HTTPURLResponse else {
+            throw LumaXMPPError.uploadFailed(statusCode: nil)
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            throw LumaXMPPError.uploadFailed(statusCode: http.statusCode)
+        }
+
+        guard var urlComponents = URLComponents(url: slot.getUri, resolvingAgainstBaseURL: false) else {
+            throw LumaXMPPError.invalidUploadURL
+        }
+        if let decryptionFragment {
+            urlComponents.scheme = "aesgcm"
+            urlComponents.fragment = decryptionFragment
+        }
+
+        guard let remoteURL = urlComponents.string else {
+            throw LumaXMPPError.invalidUploadURL
+        }
+        let fingerprint = try await sendText(
+            remoteURL,
+            to: recipient,
+            messageID: messageID,
+            encrypted: encrypted,
+            outOfBandURL: encrypted ? nil : remoteURL,
+            isGroup: isGroup
+        )
+        return MediaSendResult(remoteURL: remoteURL, fingerprint: fingerprint)
+    }
+
+    func downloadAttachment(_ remoteURL: String) async throws -> Data {
+        guard var components = URLComponents(string: remoteURL) else {
+            throw LumaXMPPError.invalidUploadURL
+        }
+        let encrypted = components.scheme?.lowercased() == "aesgcm"
+        let fragment = components.fragment
+        if encrypted {
+            components.scheme = "https"
+            components.fragment = nil
+        } else if components.scheme?.lowercased() != "https" {
+            throw LumaXMPPError.invalidUploadURL
+        }
+        guard let url = components.url else {
+            throw LumaXMPPError.invalidUploadURL
+        }
+
+        let (downloadedData, response) = try await URLSession.shared.data(from: url)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw LumaXMPPError.downloadFailed
+        }
+        guard encrypted else { return downloadedData }
+        guard let omemo = client?.moduleOrNil(.omemo), let fragment else {
+            throw LumaXMPPError.fileDecryptionFailed
+        }
+        switch omemo.decryptFile(data: downloadedData, fragment: fragment) {
+        case .success(let data):
+            return data
+        case .failure:
+            throw LumaXMPPError.fileDecryptionFailed
+        }
+    }
+
+    func devices(for jid: String) -> [OMEMODevice] {
+        omemoStorage?.devices(for: jid) ?? []
+    }
+
+    func setDeviceVerified(_ verified: Bool, jid: String, deviceID: Int32) {
+        guard omemoStorage?.setVerified(verified, jid: jid, deviceID: deviceID) == true else { return }
+        eventHandler?(.omemo(ready: client?.moduleOrNil(.omemo)?.isReady ?? false, ownFingerprint: omemoStorage?.ownFingerprint))
+    }
+
+    func addToRoster(jid: String, name: String?) {
+        guard let client, client.state == .connected() else { return }
+        client.module(.roster).addItem(jid: JID(jid), name: name, groups: [], completionHandler: nil)
+        client.module(.presence).subscribe(to: JID(jid))
+        fetchAvatar(for: jid)
+    }
+
+    func fetchAvatar(for jid: String, force: Bool = false) {
+        guard let client, client.state == .connected() else { return }
+        let normalized = jid.lowercased()
+        if force {
+            avatarRequests.remove(normalized)
+        }
+        guard avatarRequests.insert(normalized).inserted else { return }
+
+        Task { [weak self] in
+            guard let self else { return }
+            let data: Data?
+            if let pepData = await self.retrievePEPAvatar(for: normalized, client: client) {
+                data = pepData
+            } else {
+                data = await self.retrieveLegacyAvatar(for: normalized, client: client)
+            }
+            if let data {
+                self.eventHandler?(.avatar(jid: normalized, data: data))
+            }
+        }
+    }
+
+    func updateOwnAvatar(pngData: Data) async throws {
+        guard let client, client.state == .connected(), let account else {
+            throw LumaXMPPError.notConnected
+        }
+        do {
+            let avatar = PEPUserAvatarModule.Avatar(data: pngData, mimeType: "image/png")
+            _ = try await client.module(.pepUserAvatar).publishAvatar(avatar: [avatar])
+        } catch {
+            throw LumaXMPPError.avatarUpdateFailed(error.localizedDescription)
+        }
+
+        eventHandler?(.avatar(jid: account.normalizedJID, data: pngData))
+
+        // XEP-0084 is authoritative. vCard-temp is updated as a best-effort
+        // compatibility bridge for older clients.
+        Task {
+            let vcardModule = client.module(.vcardTemp)
+            let vcard = (try? await vcardModule.retrieveVCard(from: nil as JID?)) ?? VCard()
+            vcard.photos = [VCard.Photo(type: "image/png", binval: pngData.base64EncodedString())]
+            _ = try? await vcardModule.publish(vcard: vcard, to: nil)
+        }
+    }
+
+    private func configureModules(
+        client: XMPPClient,
+        signalContext: SignalContext,
+        omemoStorage: LumaOMEMOStore
+    ) {
+        _ = client.modulesManager.register(AuthModule())
+        _ = client.modulesManager.register(StreamFeaturesModule())
+        _ = client.modulesManager.register(StreamManagementModule())
+        _ = client.modulesManager.register(SaslModule())
+        _ = client.modulesManager.register(ResourceBinderModule())
+        _ = client.modulesManager.register(SessionEstablishmentModule())
+        _ = client.modulesManager.register(
+            DiscoveryModule(identity: .init(category: "client", type: "phone", name: "Luma"))
+        )
+        _ = client.modulesManager.register(
+            SoftwareVersionModule(version: .init(name: "Luma", version: "0.10.6", os: Self.platformName))
+        )
+        _ = client.modulesManager.register(PingModule())
+        _ = client.modulesManager.register(ClientStateIndicationModule())
+//        _ = client.modulesManager.register(ClientStateIndicationModule())
+        _ = client.modulesManager.register(
+            RosterModule(rosterManager: RosterManagerBase(store: LumaRosterStore()))
+        )
+        _ = client.modulesManager.register(PresenceModule(store: DefaultPresenceStore()))
+        _ = client.modulesManager.register(
+            CapabilitiesModule(additionalFeatures: [
+                .lastMessageCorrection,
+                .init(rawValue: Self.replyNamespace),
+                .init(rawValue: Self.fallbackNamespace),
+                .init(rawValue: Self.retractionNamespace),
+                .init(rawValue: Self.reactionsNamespace),
+                .init(rawValue: ChatStateNotificationsModule.XMLNS),
+                .init(rawValue: Self.stanzaIDNamespace)
+            ])
+        )
+        _ = client.modulesManager.register(PubSubModule())
+        _ = client.modulesManager.register(PEPUserAvatarModule())
+        _ = client.modulesManager.register(VCardTempModule())
+        _ = client.modulesManager.register(
+            MessageModule(chatManager: ChatManagerBase(store: DefaultChatStore()))
+        )
+        _ = client.modulesManager.register(ChatStateNotificationsModule())
+        _ = client.modulesManager.register(
+            MucModule(roomManager: RoomManagerBase(store: LumaRoomStore()))
+        )
+        _ = client.modulesManager.register(MessageCarbonsModule())
+        _ = client.modulesManager.register(MessageArchiveManagementModule())
+        let receipts = client.modulesManager.register(MessageDeliveryReceiptsModule())
+        receipts.sendReceived = true
+        _ = client.modulesManager.register(ChatMarkersModule())
+        _ = client.modulesManager.register(HttpFileUploadModule())
+        let jingle = client.modulesManager.register(JingleModule(sessionManager: callEngine))
+        jingle.register(
+            transport: Jingle.Transport.ICEUDPTransport.self,
+            features: [
+                Jingle.Transport.ICEUDPTransport.XMLNS,
+                "urn:xmpp:jingle:apps:dtls:0"
+            ]
+        )
+        jingle.register(
+            description: Jingle.RTP.Description.self,
+            features: [
+                "urn:xmpp:jingle:apps:rtp:1",
+                "urn:xmpp:jingle:apps:rtp:audio",
+                "urn:xmpp:jingle:apps:rtp:video"
+            ]
+        )
+        jingle.supportsMessageInitiation = true
+        _ = client.modulesManager.register(ExternalServiceDiscoveryModule())
+        _ = client.modulesManager.register(
+            OMEMOModule(
+                aesGCMEngine: CryptoKitAESGCMEngine(),
+                signalContext: signalContext,
+                signalStorage: omemoStorage
+            )
+        )
+    }
+
+    private func configureConnection(
+        client: XMPPClient,
+        account: AccountConfiguration,
+        password: String
+    ) {
+        client.connectionConfiguration.userJid = BareJID(account.normalizedJID)
+        client.connectionConfiguration.resource = account.effectiveResource
+        client.connectionConfiguration.nickname = account.displayName.isEmpty ? nil : account.displayName
+        client.connectionConfiguration.credentials = .password(
+            password: password,
+            authenticationName: nil,
+            cache: nil
+        )
+        let expectedDomain = account.domain ?? account.normalizedJID
+        client.connectionConfiguration.modifyConnectorOptions(type: SocketConnector.Options.self) { options in
+            options.conntectionTimeout = 20
+            options.sslCertificateValidation = .customValidator { trust in
+                CertificateTrustEvaluator.evaluateServerTrust(
+                    trust,
+                    expectedDomain: expectedDomain
+                )
+            }
+            if let host = account.manualHost {
+                let defaultPort = account.usesDirectTLS ? 5223 : 5222
+                options.dnsResolver = StaticDNSSrvResolver(
+                    host: host,
+                    port: account.manualPort ?? defaultPort,
+                    directTLS: account.usesDirectTLS
+                )
+            }
+        }
+    }
+
+    private func subscribe(to client: XMPPClient, omemoStorage: LumaOMEMOStore) {
+        client.$state
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] state in
+                self?.handle(state: state)
+            }
+            .store(in: &cancellables)
+
+        client.module(.roster).events
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] action in
+                switch action {
+                case .addedOrUpdated(let item):
+                    let jid = item.jid.bareJid.stringValue
+                    self?.eventHandler?(.rosterItem(jid: jid, name: item.name))
+                    self?.fetchAvatar(for: jid)
+                case .removed(let jid):
+                    self?.eventHandler?(.rosterRemoved(jid: jid.bareJid.stringValue))
+                }
+            }
+            .store(in: &cancellables)
+
+        client.module(.pepUserAvatar).avatarChangePublisher
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] change in
+                self?.fetchAvatar(for: change.jid.bareJid.stringValue, force: true)
+            }
+            .store(in: &cancellables)
+
+        client.module(.presence).presencePublisher
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] change in
+                self?.eventHandler?(.presence(
+                    jid: change.jid.bareJid.stringValue,
+                    online: change.presence.type != .unavailable
+                ))
+            }
+            .store(in: &cancellables)
+
+        client.module(.message).messagesPublisher
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] incoming in
+                self?.handle(message: incoming.message, timestamp: Date(), archiveID: nil)
+            }
+            .store(in: &cancellables)
+
+        client.module(.muc).messagesPublisher
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] incoming in
+                self?.handle(groupMessage: incoming.message, room: incoming.room)
+            }
+            .store(in: &cancellables)
+
+        client.module(.muc).inivitationsPublisher
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] invitation in
+                self?.eventHandler?(.roomInvitation(RoomInvitationEnvelope(
+                    roomJID: invitation.roomJid.stringValue,
+                    inviterJID: invitation.inviter?.stringValue,
+                    reason: invitation.reason,
+                    password: invitation.password
+                )))
+            }
+            .store(in: &cancellables)
+
+        client.module(.messageCarbons).carbonsPublisher
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] carbon in
+                self?.handle(message: carbon.message, timestamp: Date(), archiveID: nil)
+            }
+            .store(in: &cancellables)
+
+        client.module(.messageCarbons).$isAvailable
+            .filter { $0 }
+            .prefix(1)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak client] _ in
+                client?.module(.messageCarbons).enable()
+            }
+            .store(in: &cancellables)
+
+        client.module(.messageDeliveryReceipts).receiptsPublisher
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] receipt in
+                self?.eventHandler?(.delivered(messageID: receipt.messageId))
+            }
+            .store(in: &cancellables)
+
+        // Do not enqueue every archived stanza onto DispatchQueue.main. Martin
+        // publishes all results before the final IQ callback, so a locked inbox
+        // can receive the whole page on the parser queue and hand it to the
+        // main actor once. This mirrors Monal's delayed-stanza queue and avoids
+        // flooding SwiftUI's run loop on large histories.
+        let archiveStanzaInbox = self.archiveStanzaInbox
+        client.module(.mam).archivedMessagesPublisher
+            .sink { archived in
+                archiveStanzaInbox.append(
+                    queryID: archived.query.id,
+                    source: archived.source,
+                    message: archived.message,
+                    timestamp: archived.timestamp,
+                    archiveID: archived.messageId
+                )
+            }
+            .store(in: &cancellables)
+
+        client.module(.mam).$availableVersions
+            .filter { !$0.isEmpty }
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.startArchiveSyncIfAvailable()
+            }
+            .store(in: &cancellables)
+
+        client.module(.omemo).$isReady
+            .removeDuplicates()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] ready in
+                self?.eventHandler?(.omemo(ready: ready, ownFingerprint: omemoStorage.ownFingerprint))
+            }
+            .store(in: &cancellables)
+    }
+
+    private func handle(state: XMPPClient.State) {
+        switch state {
+        case .connecting, .disconnecting:
+            eventHandler?(.connection(.connecting))
+        case .connected:
+            eventHandler?(.connection(.connected))
+            startArchiveSyncIfAvailable()
+        case .disconnected(let reason):
+            suspendArchiveSyncForDisconnect()
+            eventHandler?(.connection(.disconnected(reason: Self.reasonText(reason))))
+        }
+    }
+
+    private func handle(
+        message: Message,
+        timestamp: Date,
+        archiveID: String?,
+        isArchived: Bool = false
+    ) {
+        guard message.type != .error,
+              message.type != .groupchat,
+              let client,
+              let sender = message.from?.bareJid else { return }
+
+        let ownJID = client.userBareJid
+        let outgoing = sender == ownJID
+        guard let peer = outgoing ? message.to?.bareJid : message.from?.bareJid else { return }
+
+        let security: ChatMessage.Security
+        let fingerprint: String?
+        let contentMessage: Message?
+        switch client.module(.omemo).decode(message: message, from: sender, serverMsgId: archiveID) {
+        case .successMessage(let decodedMessage, let value):
+            security = .omemo
+            fingerprint = value
+            contentMessage = decodedMessage
+        case .successTransportKey(_, _):
+            return
+        case .failure(let error):
+            switch error {
+            case .notEncrypted:
+                security = .plaintext
+                fingerprint = nil
+                contentMessage = message
+            case .duplicateMessage:
+                return
+            default:
+                security = .decryptionFailed
+                fingerprint = nil
+                contentMessage = nil
+            }
+        }
+
+        let payload = contentMessage ?? message
+        if !isArchived,
+           let state = Self.chatTypingState(payload.chatState ?? message.chatState) {
+            knownChatStatePeers.insert(peer.stringValue.lowercased())
+            if !outgoing {
+                eventHandler?(.chatState(ChatStateEnvelope(
+                    peerJID: peer.stringValue,
+                    senderJID: sender.stringValue,
+                    senderDisplayName: nil,
+                    state: state,
+                    isGroupMessage: false
+                )))
+            }
+        }
+
+        if let reactions = payload.firstChild(name: "reactions", xmlns: Self.reactionsNamespace)
+            ?? message.firstChild(name: "reactions", xmlns: Self.reactionsNamespace),
+           let targetID = reactions.getAttribute("id"),
+           !targetID.isEmpty {
+            emitReaction(
+                ReactionEnvelope(
+                    peerJID: peer.stringValue,
+                    senderJID: sender.stringValue,
+                    targetID: targetID,
+                    emojis: reactions.children.compactMap { child in
+                        guard child.name == "reaction" else { return nil }
+                        return child.value
+                    },
+                    timestamp: timestamp,
+                    isOutgoing: outgoing,
+                    isGroupMessage: false
+                ),
+                isArchived: isArchived
+            )
+            return
+        }
+
+        if let retract = payload.firstChild(name: "retract", xmlns: Self.retractionNamespace)
+            ?? message.firstChild(name: "retract", xmlns: Self.retractionNamespace),
+           let targetID = retract.getAttribute("id"),
+           !targetID.isEmpty {
+            emitRetraction(
+                peer: peer,
+                sender: sender,
+                targetID: targetID,
+                retractionID: payload.id ?? message.id ?? archiveID ?? UUID().uuidString,
+                timestamp: timestamp,
+                outgoing: outgoing,
+                isArchived: isArchived
+            )
+            return
+        }
+
+        if payload.firstChild(name: "retracted", xmlns: Self.retractionNamespace) != nil
+            || message.firstChild(name: "retracted", xmlns: Self.retractionNamespace) != nil {
+            guard let targetID = message.originId ?? message.id ?? archiveID else { return }
+            let tombstone = payload.firstChild(name: "retracted", xmlns: Self.retractionNamespace)
+            ?? message.firstChild(name: "retracted", xmlns: Self.retractionNamespace)
+            emitRetraction(
+                peer: peer,
+                sender: sender,
+                targetID: targetID,
+                retractionID: tombstone?.getAttribute("id") ?? UUID().uuidString,
+                timestamp: timestamp,
+                outgoing: outgoing,
+                isArchived: isArchived
+            )
+            return
+        }
+
+        let rawBody = contentMessage?.body
+            ?? (security == .decryptionFailed ? "Не удалось расшифровать сообщение" : nil)
+        guard let body = rawBody, !body.isEmpty else { return }
+
+        let reply = payload.firstChild(name: "reply", xmlns: Self.replyNamespace)
+        ?? message.firstChild(name: "reply", xmlns: Self.replyNamespace)
+        let replyFallback = payload.children.first { child in
+            child.name == "fallback"
+                && child.xmlns == Self.fallbackNamespace
+                && child.getAttribute("for") == Self.replyNamespace
+        } ?? message.children.first { child in
+            child.name == "fallback"
+                && child.xmlns == Self.fallbackNamespace
+                && child.getAttribute("for") == Self.replyNamespace
+        }
+        let fallbackBody = replyFallback?.findChild(name: "body")
+        let parsedReply = MessageReplyFallback.parse(
+            body: body,
+            fallbackStart: fallbackBody?.getAttribute("start").flatMap(Int.init),
+            fallbackEnd: fallbackBody?.getAttribute("end").flatMap(Int.init)
+        )
+        let visibleBody = parsedReply.body
+
+        let isEncryptedAttachment = visibleBody.hasPrefix("aesgcm://")
+            && visibleBody.rangeOfCharacter(from: .whitespacesAndNewlines) == nil
+            && URLComponents(string: visibleBody)?.scheme?.lowercased() == "aesgcm"
+        let oob = payload.oob ?? message.oob
+        let standardOOB = oob?.hasPrefix("https://") == true ? oob : nil
+        let attachmentURL = isEncryptedAttachment ? visibleBody : standardOOB
+        let transportFilename = attachmentURL.flatMap { value -> String? in
+            guard let url = URL(string: value) else { return nil }
+            guard var filename = url.lastPathComponent.removingPercentEncoding else { return nil }
+            if filename.hasSuffix(".aesgcm") {
+                filename = String(filename.dropLast(".aesgcm".count))
+            }
+            return filename
+        }
+        let inferred = transportFilename.map(MediaMetadata.infer(from:))
+        let kind = inferred?.kind ?? (GeoLocation(uri: visibleBody) == nil ? .text : .location)
+        let displayBody = attachmentURL == nil
+            ? visibleBody
+            : Self.displayBody(kind: kind, filename: transportFilename ?? "Вложение")
+
+        let id = message.originId ?? message.id ?? archiveID ?? UUID().uuidString
+        emitMessage(MessageEnvelope(
+            id: id,
+            peerJID: peer.stringValue,
+            senderJID: sender.stringValue,
+            body: displayBody,
+            timestamp: timestamp,
+            isOutgoing: outgoing,
+            security: security,
+            kind: kind,
+            remoteAttachmentURL: attachmentURL,
+            localFilename: transportFilename,
+            mimeType: inferred?.mimeType,
+            duration: inferred?.duration,
+            byteCount: nil,
+            fingerprint: fingerprint,
+            correctionTargetID: payload.lastMessageCorrectionId ?? message.lastMessageCorrectionId,
+            replyToID: reply?.getAttribute("id"),
+            replyToJID: reply?.getAttribute("to"),
+            replyPreview: parsedReply.preview,
+            stanzaID: nil,
+            senderDisplayName: nil,
+            isGroupMessage: false,
+            isArchived: isArchived
+        ), isArchived: isArchived)
+    }
+
+    private func handle(groupMessage message: Message, room: RoomProtocol) {
+        guard message.type != .error,
+              let client,
+              let from = message.from else { return }
+
+        let nickname = from.resource ?? "Участник"
+        let outgoing = nickname == room.nickname
+        let roomJID = room.jid.stringValue.lowercased()
+        // In a MUC the author address used by XEP-0461 is the full occupant
+        // JID (room@service/nickname), not the participant's disclosed real JID.
+        let senderJID = from.stringValue
+        let stanzaID = Self.roomStanzaID(in: message, roomJID: room.jid)
+        let id = outgoing
+            ? (message.originId ?? message.id ?? stanzaID ?? UUID().uuidString)
+            : (stanzaID ?? message.originId ?? message.id ?? UUID().uuidString)
+
+        let encrypted = message.firstChild(name: "encrypted", xmlns: OMEMOModule.XMLNS) != nil
+        let realSender: BareJID?
+        if outgoing {
+            realSender = client.userBareJid
+        } else if let disclosed = Self.originalSenderJID(in: message) {
+            realSender = disclosed
+            roomRealJIDByNickname[roomJID, default: [:]][nickname] = disclosed
+        } else if let disclosed = XMucUserElement.extract(from: message)?.jid?.bareJid {
+            realSender = disclosed
+            roomRealJIDByNickname[roomJID, default: [:]][nickname] = disclosed
+        } else if let disclosed = room.occupant(nickname: nickname)?.jid?.bareJid {
+            realSender = disclosed
+            roomRealJIDByNickname[roomJID, default: [:]][nickname] = disclosed
+        } else {
+            realSender = roomRealJIDByNickname[roomJID]?[nickname]
+        }
+
+        let security: ChatMessage.Security
+        let fingerprint: String?
+        let contentMessage: Message?
+        if let realSender {
+            switch client.module(.omemo).decode(
+                message: message,
+                from: realSender,
+                serverMsgId: stanzaID
+            ) {
+            case .successMessage(let decodedMessage, let value):
+                security = .omemo
+                fingerprint = value
+                contentMessage = decodedMessage
+            case .successTransportKey(_, _):
+                return
+            case .failure(let error):
+                switch error {
+                case .notEncrypted:
+                    security = .plaintext
+                    fingerprint = nil
+                    contentMessage = message
+                case .duplicateMessage:
+                    emitGroupEchoIfPossible(
+                        roomJID: roomJID,
+                        messageID: id,
+                        stanzaID: stanzaID,
+                        senderJID: senderJID
+                    )
+                    return
+                default:
+                    if outgoing {
+                        emitGroupEchoIfPossible(
+                            roomJID: roomJID,
+                            messageID: id,
+                            stanzaID: stanzaID,
+                            senderJID: senderJID
+                        )
+                        return
+                    }
+                    security = .decryptionFailed
+                    fingerprint = nil
+                    contentMessage = nil
+                }
+            }
+        } else if encrypted {
+            security = .decryptionFailed
+            fingerprint = nil
+            contentMessage = nil
+        } else {
+            security = .plaintext
+            fingerprint = nil
+            contentMessage = message
+        }
+
+        let payload = contentMessage ?? message
+        if let state = Self.chatTypingState(payload.chatState ?? message.chatState) {
+            knownChatStatePeers.insert(roomJID)
+            if !outgoing {
+                eventHandler?(.chatState(ChatStateEnvelope(
+                    peerJID: roomJID,
+                    senderJID: senderJID,
+                    senderDisplayName: nickname,
+                    state: state,
+                    isGroupMessage: true
+                )))
+            }
+        }
+
+        if let reactions = payload.firstChild(name: "reactions", xmlns: Self.reactionsNamespace)
+            ?? message.firstChild(name: "reactions", xmlns: Self.reactionsNamespace),
+           let targetID = reactions.getAttribute("id"),
+           !targetID.isEmpty {
+            let reactionSender = outgoing
+                ? client.userBareJid.stringValue
+                : (realSender?.stringValue ?? senderJID)
+            emitReaction(
+                ReactionEnvelope(
+                    peerJID: roomJID,
+                    senderJID: reactionSender,
+                    targetID: targetID,
+                    emojis: reactions.children.compactMap { child in
+                        guard child.name == "reaction" else { return nil }
+                        return child.value
+                    },
+                    timestamp: message.delay?.stamp ?? Date(),
+                    isOutgoing: outgoing,
+                    isGroupMessage: true
+                ),
+                isArchived: false
+            )
+            return
+        }
+
+        let rawBody = contentMessage?.body
+            ?? (security == .decryptionFailed ? "Не удалось расшифровать групповое сообщение" : nil)
+        guard let rawBody, !rawBody.isEmpty else { return }
+        let reply = payload.firstChild(name: "reply", xmlns: Self.replyNamespace)
+        ?? message.firstChild(name: "reply", xmlns: Self.replyNamespace)
+        let replyFallback = payload.children.first { child in
+            child.name == "fallback"
+                && child.xmlns == Self.fallbackNamespace
+                && child.getAttribute("for") == Self.replyNamespace
+        } ?? message.children.first { child in
+            child.name == "fallback"
+                && child.xmlns == Self.fallbackNamespace
+                && child.getAttribute("for") == Self.replyNamespace
+        }
+        let fallbackBody = replyFallback?.findChild(name: "body")
+        let parsedReply = MessageReplyFallback.parse(
+            body: rawBody,
+            fallbackStart: fallbackBody?.getAttribute("start").flatMap(Int.init),
+            fallbackEnd: fallbackBody?.getAttribute("end").flatMap(Int.init)
+        )
+        let visibleBody = parsedReply.body
+
+        let isEncryptedAttachment = visibleBody.hasPrefix("aesgcm://")
+            && visibleBody.rangeOfCharacter(from: .whitespacesAndNewlines) == nil
+            && URLComponents(string: visibleBody)?.scheme?.lowercased() == "aesgcm"
+        let oob = payload.oob ?? message.oob
+        let standardOOB = oob?.hasPrefix("https://") == true ? oob : nil
+        let attachmentURL = isEncryptedAttachment ? visibleBody : standardOOB
+        let transportFilename = attachmentURL.flatMap { value -> String? in
+            guard let url = URL(string: value) else { return nil }
+            guard var filename = url.lastPathComponent.removingPercentEncoding else { return nil }
+            if filename.hasSuffix(".aesgcm") {
+                filename = String(filename.dropLast(".aesgcm".count))
+            }
+            return filename
+        }
+        let inferred = transportFilename.map(MediaMetadata.infer(from:))
+        let kind = inferred?.kind ?? (GeoLocation(uri: visibleBody) == nil ? .text : .location)
+        let displayBody = attachmentURL == nil
+            ? visibleBody
+            : Self.displayBody(kind: kind, filename: transportFilename ?? "Вложение")
+        eventHandler?(.message(MessageEnvelope(
+            id: id,
+            peerJID: room.jid.stringValue,
+            senderJID: senderJID,
+            body: displayBody,
+            timestamp: message.delay?.stamp ?? Date(),
+            isOutgoing: outgoing,
+            security: security,
+            kind: kind,
+            remoteAttachmentURL: attachmentURL,
+            localFilename: transportFilename,
+            mimeType: inferred?.mimeType,
+            duration: inferred?.duration,
+            byteCount: nil,
+            fingerprint: fingerprint,
+            correctionTargetID: payload.lastMessageCorrectionId ?? message.lastMessageCorrectionId,
+            replyToID: reply?.getAttribute("id"),
+            replyToJID: reply?.getAttribute("to"),
+            replyPreview: parsedReply.preview,
+            stanzaID: stanzaID,
+            senderDisplayName: nickname,
+            isGroupMessage: true,
+            isArchived: false
+        )))
+    }
+
+    private func observe(room: RoomProtocol) {
+        let roomJID = room.jid.stringValue.lowercased()
+        guard observedRoomJIDs.insert(roomJID).inserted else { return }
+
+        room.statePublisher
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self, weak room] state in
+                guard let room else { return }
+                self?.eventHandler?(.roomState(RoomStateEnvelope(
+                    roomJID: roomJID,
+                    nickname: room.nickname,
+                    joined: state == .joined,
+                    occupantCount: 0
+                )))
+            }
+            .store(in: &cancellables)
+
+        room.occupantsPublisher
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self, weak room] occupants in
+                guard let self, let room else { return }
+                self.roomOccupantsByJID[roomJID] = occupants
+                var knownAuthors = self.roomRealJIDByNickname[roomJID] ?? [:]
+                for occupant in occupants {
+                    if let realJID = occupant.jid?.bareJid {
+                        knownAuthors[occupant.nickname] = realJID
+                    }
+                }
+                self.roomRealJIDByNickname[roomJID] = knownAuthors
+                self.eventHandler?(.roomState(RoomStateEnvelope(
+                    roomJID: roomJID,
+                    nickname: room.nickname,
+                    joined: room.state == .joined,
+                    occupantCount: occupants.count
+                )))
+            }
+            .store(in: &cancellables)
+    }
+
+    private func configureInstantRoom(_ room: RoomProtocol, using muc: MucModule) async throws {
+        _ = try await configureRoomForOMEMO(
+            room,
+            using: muc,
+            makeMembersOnly: true
+        )
+    }
+
+    @discardableResult
+    private func configureRoomForOMEMO(
+        _ room: RoomProtocol,
+        using muc: MucModule,
+        makeMembersOnly: Bool
+    ) async throws -> Bool {
+        let roomJID = JID(room.jid)
+        let configuration: JabberDataElement = try await withCheckedThrowingContinuation { continuation in
+            muc.getRoomConfiguration(roomJid: roomJID) { result in
+                switch result {
+                case .success(let value): continuation.resume(returning: value)
+                case .failure(let error): continuation.resume(throwing: error)
+                }
+            }
+        }
+
+        var supportsNonAnonymousRooms = false
+        if let field: ListSingleField = configuration.getField(named: "muc#roomconfig_whois") {
+            field.value = "anyone"
+            supportsNonAnonymousRooms = true
+        } else if let field: TextSingleField = configuration.getField(named: "muc#roomconfig_whois") {
+            field.value = "anyone"
+            supportsNonAnonymousRooms = true
+        }
+        if let field: ListMultiField = configuration.getField(named: "muc#roomconfig_getmemberlist") {
+            field.value = Array(Set(field.value + ["moderator", "participant"])).sorted()
+        }
+        if makeMembersOnly,
+           let field: BooleanField = configuration.getField(named: "muc#roomconfig_membersonly") {
+            field.value = true
+        }
+        if makeMembersOnly,
+           let field: BooleanField = configuration.getField(named: "muc#roomconfig_persistentroom") {
+            field.value = true
+        }
+
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            muc.setRoomConfiguration(roomJid: roomJID, configuration: configuration) { result in
+                switch result {
+                case .success(let value): continuation.resume(returning: value)
+                case .failure(let error): continuation.resume(throwing: error)
+                }
+            }
+        }
+        if supportsNonAnonymousRooms {
+            omemoConfiguredRoomJIDs.insert(room.jid.stringValue.lowercased())
+        }
+        return supportsNonAnonymousRooms
+    }
+
+    private func groupOMEMORecipients(
+        in room: RoomProtocol,
+        using muc: MucModule,
+        client: XMPPClient
+    ) async throws -> [BareJID] {
+        let roomJID = room.jid.stringValue.lowercased()
+        try await ensureRoomIsNonAnonymous(room, using: muc, client: client)
+
+        var occupantsByNickname = Dictionary(
+            uniqueKeysWithValues: (roomOccupantsByJID[roomJID] ?? []).map {
+                ($0.nickname, $0)
+            }
+        )
+        // `receive(on:)` delivers the cached publisher value on the next main
+        // queue turn. Read RoomBase synchronously as well so a send immediately
+        // after joining cannot miss already-present open-room occupants.
+        if let currentOccupants = (room as? RoomBase)?.occupants {
+            for occupant in currentOccupants {
+                occupantsByNickname[occupant.nickname] = occupant
+            }
+        }
+        let occupants = Array(occupantsByNickname.values)
+        let hiddenOccupants = occupants.filter {
+            $0.nickname != room.nickname && $0.role != .none && $0.jid == nil
+        }
+        guard hiddenOccupants.isEmpty else {
+            throw LumaXMPPError.groupEncryptionParticipantsHidden(
+                hiddenOccupants.map(\.nickname).sorted()
+            )
+        }
+
+        var recipients = Set(occupants.compactMap { $0.jid?.bareJid })
+        var knownAuthors = roomRealJIDByNickname[roomJID] ?? [:]
+        for affiliation in [MucAffiliation.member, .admin, .owner] {
+            let values: [MucModule.RoomAffiliation]
+            do {
+                values = try await roomAffiliations(
+                    in: room,
+                    affiliation: affiliation,
+                    using: muc
+                )
+            } catch {
+                throw LumaXMPPError.groupEncryptionMemberListUnavailable(
+                    error.localizedDescription
+                )
+            }
+            for value in values {
+                recipients.insert(value.jid.bareJid)
+                if let nickname = value.nickname, !nickname.isEmpty {
+                    knownAuthors[nickname] = value.jid.bareJid
+                }
+            }
+        }
+        roomRealJIDByNickname[roomJID] = knownAuthors
+
+        // MartinOMEMO automatically adds the sender's other devices in
+        // _encode(..., forSelf: true). Remove the sender from the occupant
+        // set: its published device list also contains the active device and
+        // would incorrectly require a Signal session with itself.
+        recipients.remove(client.userBareJid)
+        recipients.remove(room.jid)
+        return recipients.sorted { $0.stringValue < $1.stringValue }
+    }
+
+    private func ensureRoomIsNonAnonymous(
+        _ room: RoomProtocol,
+        using muc: MucModule,
+        client: XMPPClient
+    ) async throws {
+        let roomJID = room.jid.stringValue.lowercased()
+        if omemoConfiguredRoomJIDs.contains(roomJID) { return }
+
+        let info = try? await client.module(.disco).info(for: JID(room.jid))
+        if info?.features.contains("muc_nonanonymous") == true {
+            omemoConfiguredRoomJIDs.insert(roomJID)
+            return
+        }
+
+        let ownAffiliation = room.occupant(nickname: room.nickname)?.affiliation ?? room.affiliation
+        if ownAffiliation == .owner {
+            let configured = try await configureRoomForOMEMO(
+                room,
+                using: muc,
+                makeMembersOnly: false
+            )
+            guard configured else {
+                throw LumaXMPPError.groupEncryptionConfigurationUnsupported
+            }
+            eventHandler?(.recoverableError(
+                "Комната переведена в неанонимный режим, необходимый для группового OMEMO."
+            ))
+            return
+        }
+
+        throw LumaXMPPError.groupEncryptionRequiresNonAnonymousRoom
+    }
+
+    private func roomAffiliations(
+        in room: RoomProtocol,
+        affiliation: MucAffiliation,
+        using muc: MucModule
+    ) async throws -> [MucModule.RoomAffiliation] {
+        try await withCheckedThrowingContinuation { continuation in
+            muc.getRoomAffiliations(from: room, with: affiliation) { result in
+                continuation.resume(with: result)
+            }
+        }
+    }
+
+    private func addReply(
+        _ replyTo: ReplyReference?,
+        fallback replyFallback: (prefix: String, scalarCount: Int)?,
+        to message: Message
+    ) {
+        guard let replyTo, let replyFallback else { return }
+        let reply = Element(name: "reply", xmlns: Self.replyNamespace)
+        reply.setAttribute("id", value: replyTo.id)
+        if let authorJID = replyTo.authorJID {
+            reply.setAttribute("to", value: authorJID)
+        }
+        message.addChild(reply)
+
+        let fallback = Element(name: "fallback", xmlns: Self.fallbackNamespace)
+        fallback.setAttribute("for", value: Self.replyNamespace)
+        let bodyRange = Element(name: "body")
+        bodyRange.setAttribute("start", value: "0")
+        bodyRange.setAttribute("end", value: String(replyFallback.scalarCount))
+        fallback.addChild(bodyRange)
+        message.addChild(fallback)
+    }
+
+    private static func roomStanzaID(in message: Message, roomJID: BareJID) -> String? {
+        message.children.first { child in
+            guard child.name == "stanza-id", child.xmlns == Self.stanzaIDNamespace else { return false }
+            guard let by = child.getAttribute("by")?.lowercased() else { return false }
+            return by == roomJID.stringValue.lowercased()
+        }?.getAttribute("id")
+    }
+
+    private static func originalSenderJID(in message: Message) -> BareJID? {
+        guard let address = message.firstChild(
+            name: "addresses",
+            xmlns: Self.extendedAddressingNamespace
+        )?.children.first(where: { child in
+            child.name == "address"
+                && child.getAttribute("type") == "ofrom"
+                && child.getAttribute("jid") != nil
+        }),
+        let value = address.getAttribute("jid") else { return nil }
+        return JID(value).bareJid
+    }
+
+    private static func martinChatState(_ state: ChatTypingState) -> ChatState {
+        switch state {
+        case .active: return .active
+        case .composing: return .composing
+        case .paused: return .paused
+        case .inactive: return .inactive
+        case .gone: return .gone
+        }
+    }
+
+    private static func chatTypingState(_ state: ChatState?) -> ChatTypingState? {
+        guard let state else { return nil }
+        switch state {
+        case .active: return .active
+        case .composing: return .composing
+        case .paused: return .paused
+        case .inactive: return .inactive
+        case .gone: return .gone
+        }
+    }
+
+    private func emitGroupEchoIfPossible(
+        roomJID: String,
+        messageID: String,
+        stanzaID: String?,
+        senderJID: String
+    ) {
+        guard let stanzaID, !stanzaID.isEmpty else { return }
+        eventHandler?(.groupMessageEcho(
+            roomJID: roomJID,
+            messageID: messageID,
+            stanzaID: stanzaID,
+            senderJID: senderJID
+        ))
+    }
+
+    private func emitRetraction(
+        peer: BareJID,
+        sender: BareJID,
+        targetID: String,
+        retractionID: String,
+        timestamp: Date,
+        outgoing: Bool,
+        isArchived: Bool
+    ) {
+        let envelope = RetractionEnvelope(
+            peerJID: peer.stringValue,
+            senderJID: sender.stringValue,
+            targetID: targetID,
+            retractionID: retractionID,
+            timestamp: timestamp,
+            isOutgoing: outgoing
+        )
+        if isArchived {
+            archivePassMutations.append(.retraction(envelope))
+        } else {
+            eventHandler?(.retraction(envelope))
+        }
+    }
+
+    private func emitReaction(
+        _ envelope: ReactionEnvelope,
+        isArchived: Bool
+    ) {
+        if isArchived {
+            archivePassMutations.append(.reaction(envelope))
+        } else {
+            eventHandler?(.reaction(envelope))
+        }
+    }
+
+    private func emitMessage(_ envelope: MessageEnvelope, isArchived: Bool) {
+        if isArchived {
+            archivePassMutations.append(.message(envelope))
+        } else {
+            eventHandler?(.message(envelope))
+        }
+    }
+
+    private func retrievePEPAvatar(for jid: String, client: XMPPClient) async -> Data? {
+        do {
+            let avatarModule = client.module(.pepUserAvatar)
+            let info = try await avatarModule.retrieveAvatarMetadata(
+                from: BareJID(jid),
+                fireEvents: false
+            )
+            guard info.size > 0, info.size <= 2 * 1_024 * 1_024 else { return nil }
+            let (_, data) = try await avatarModule.retrieveAvatar(from: BareJID(jid), itemId: info.id)
+            return data.count <= 2 * 1_024 * 1_024 ? data : nil
+        } catch {
+            return nil
+        }
+    }
+
+    private func retrieveLegacyAvatar(for jid: String, client: XMPPClient) async -> Data? {
+        do {
+            let card = try await client.module(.vcardTemp).retrieveVCard(from: JID(jid))
+            guard let encoded = card.photos.first(where: { $0.binval != nil })?.binval,
+                  let data = Data(base64Encoded: encoded),
+                  data.count <= 2 * 1_024 * 1_024 else { return nil }
+            return data
+        } catch {
+            return nil
+        }
+    }
+
+    private static func displayBody(kind: ChatMessage.Kind, filename: String) -> String {
+        switch kind {
+        case .attachment:
+            return filename
+        case .photo:
+            return "Фото"
+        case .video:
+            return "Видео"
+        case .audio:
+            return filename
+        case .voice:
+            return "Голосовое сообщение"
+        case .videoNote:
+            return "Видеосообщение"
+        case .location, .text, .system:
+            return filename
+        }
+    }
+
+    private func encrypt(_ message: Message, using omemo: OMEMOModule) async throws -> (message: Message, fingerprint: String?) {
+        try await withCheckedThrowingContinuation { continuation in
+            omemo.encode(message: message, withStoreHint: true) { result in
+                switch result {
+                case .successMessage(let message, let fingerprint):
+                    continuation.resume(returning: (message, fingerprint))
+                case .failure(let error):
+                    continuation.resume(throwing: LumaXMPPError.omemoEncryptionFailed(error.rawValue))
+                }
+            }
+        }
+    }
+
+    private func encrypt(
+        _ message: Message,
+        forGroupRecipients recipients: [BareJID],
+        using omemo: OMEMOModule
+    ) async throws -> (message: Message, fingerprint: String?) {
+        let fetchedAddresses: [SignalAddress] = try await withCheckedThrowingContinuation { continuation in
+            omemo.addresses(for: recipients) { result in
+                switch result {
+                case .success(let addresses):
+                    continuation.resume(returning: addresses)
+                case .failure(let error):
+                    continuation.resume(throwing: LumaXMPPError.omemoEncryptionFailed(error.rawValue))
+                }
+            }
+        }
+        let addresses = Array(Set(fetchedAddresses))
+
+        let availableJIDs = Set(addresses.map { $0.name.lowercased() })
+        let missingJIDs = recipients
+            .map(\.stringValue)
+            .filter { !availableJIDs.contains($0.lowercased()) }
+        guard missingJIDs.isEmpty else {
+            throw LumaXMPPError.groupOMEMODevicesUnavailable(missingJIDs.sorted())
+        }
+
+        let addressesWithoutSessions = addresses.filter {
+            omemoStorage?.hasSession(for: $0) != true
+        }
+        guard addressesWithoutSessions.isEmpty else {
+            throw LumaXMPPError.groupOMEMOSessionsUnavailable(
+                addressesWithoutSessions
+                    .map { "\($0.name)/\($0.deviceId)" }
+                    .sorted()
+            )
+        }
+
+        let encryptedMessage: (message: Message, fingerprint: String?) = try await withCheckedThrowingContinuation { continuation in
+            omemo.encode(message: message, forAddresses: addresses, withStoreHint: true) { result in
+                switch result {
+                case .successMessage(let message, let fingerprint):
+                    continuation.resume(returning: (message, fingerprint))
+                case .failure(let error):
+                    continuation.resume(throwing: LumaXMPPError.omemoEncryptionFailed(error.rawValue))
+                }
+            }
+        }
+
+        var encryptedKeyCounts: [Int32: Int] = [:]
+        encryptedMessage.message
+            .firstChild(name: "encrypted", xmlns: OMEMOModule.XMLNS)?
+            .findChild(name: "header")?
+            .children
+            .filter { $0.name == "key" }
+            .compactMap { $0.getAttribute("rid").flatMap(Int32.init) }
+            .forEach { encryptedKeyCounts[$0, default: 0] += 1 }
+
+        var unavailableAddresses: [String] = []
+        for address in addresses {
+            let availableCount = encryptedKeyCounts[address.deviceId, default: 0]
+            if availableCount > 0 {
+                encryptedKeyCounts[address.deviceId] = availableCount - 1
+            } else {
+                unavailableAddresses.append("\(address.name)/\(address.deviceId)")
+            }
+        }
+        guard unavailableAddresses.isEmpty else {
+            throw LumaXMPPError.groupOMEMOSessionsUnavailable(unavailableAddresses.sorted())
+        }
+        return encryptedMessage
+    }
+
+    private func startArchiveSyncIfAvailable() {
+        guard let client,
+              client.state == .connected(),
+              !archiveSyncSuspended,
+              !archiveRetrySuppressedUntilActivation,
+              !client.module(.mam).availableVersions.isEmpty else { return }
+        startArchiveSync(client: client)
+    }
+
+    private func startArchiveSync(client: XMPPClient) {
+        guard !archiveSyncStarted,
+              !archiveSyncCompletedForConnection,
+              !archiveSyncSuspended,
+              !archiveRetrySuppressedUntilActivation,
+              self.client === client else { return }
+        archiveSyncStarted = true
+        if archiveSyncQueryStartedAt == nil {
+            archiveSyncQueryStartedAt = Date()
+        }
+        archiveIsBootstrapQuery = archiveSyncCheckpoint == nil
+        archiveWorkBudget = ArchiveSyncWorkBudget()
+        archiveHighWatermark = nil
+        archiveLastCompletedCursor = archiveSyncCheckpoint?.cursor
+        archiveHasCompletedPage = false
+        archiveCursorFallbackUsed = false
+        archivePassMutations.removeAll(keepingCapacity: true)
+        archivePagination = ArchiveSyncPagination()
+        archiveRetryTask?.cancel()
+        archiveRetryTask = nil
+        archiveQueryTimeoutTask?.cancel()
+        archiveQueryTimeoutTask = nil
+        archiveQueryCompletionTask?.cancel()
+        archiveQueryCompletionTask = nil
+        archiveActiveQueryID = nil
+        archiveStanzaBuffer.removeAll(keepingCapacity: true)
+        archiveBufferOverflowed = false
+        archiveRejectedSource = false
+        archiveStanzaInbox.cancel()
+        setArchiveSyncIndicator(true)
+        client.module(.omemo).mamSyncStarted(for: nil)
+        let initialPosition = ArchiveSyncCursorPolicy.requestPosition(
+            checkpoint: archiveSyncCheckpoint,
+            resumeAfter: archiveResumeAfter,
+            overlap: ArchiveSyncRecoveryPolicy.incrementalOverlap
+        )
+        queryArchive(
+            client: client,
+            after: archiveIsBootstrapQuery ? nil : initialPosition.after,
+            retry: 0
+        )
+    }
+
+    private func queryArchive(client: XMPPClient, after: String?, retry: Int) {
+        guard archiveSyncStarted,
+              self.client === client,
+              client.state == .connected() else {
+            if archiveSyncStarted, self.client === client {
+                finishArchiveSync(client: client, succeeded: false)
+            } else {
+                setArchiveSyncIndicator(false)
+            }
+            return
+        }
+        let queryID = UUID().uuidString
+        archiveActiveQueryID = queryID
+        archiveStanzaBuffer.removeAll(keepingCapacity: true)
+        archiveBufferOverflowed = false
+        archiveRejectedSource = false
+        archiveStanzaInbox.begin(
+            queryID: queryID,
+            allowedSources: [
+                client.userBareJid.stringValue,
+                client.userBareJid.domain
+            ]
+        )
+        scheduleArchiveQueryTimeout(client: client, queryID: queryID)
+        let start = archiveIsBootstrapQuery
+            ? nil
+            : (after == nil ? archiveSyncCheckpoint?.timestamp.addingTimeInterval(
+                -ArchiveSyncRecoveryPolicy.incrementalOverlap
+            ) : nil)
+        let resultSet = archiveIsBootstrapQuery
+            ? RSM.Query(lastItems: archiveBootstrapMessageLimit)
+            : RSM.Query(after: after, max: archivePageSize)
+        client.module(.mam).queryItems(
+            start: start,
+            queryId: queryID,
+            rsm: resultSet
+        ) { [weak self, weak client] result in
+            // XEP-0313 guarantees that the final IQ follows every result. The
+            // parser-queue inbox is therefore complete before this single main
+            // actor hand-off runs.
+            DispatchQueue.main.async {
+                guard let self,
+                      let client,
+                      self.archiveSyncStarted,
+                      self.archiveActiveQueryID == queryID,
+                      self.client === client else { return }
+                self.archiveQueryTimeoutTask?.cancel()
+                self.archiveQueryTimeoutTask = nil
+                let page = self.archiveStanzaInbox.take(queryID: queryID)
+                self.archiveStanzaBuffer = page.stanzas
+                self.archiveBufferOverflowed = page.overflowed
+                self.archiveRejectedSource = page.rejectedSource
+
+                guard case .success = result,
+                      !page.overflowed,
+                      !page.rejectedSource else {
+                    self.archiveActiveQueryID = nil
+                    self.completeArchivePage(
+                        result,
+                        client: client,
+                        requestedAfter: after,
+                        retry: retry
+                    )
+                    return
+                }
+
+                self.scheduleArchiveApplyTimeout(client: client, queryID: queryID)
+                self.archiveQueryCompletionTask?.cancel()
+                self.archiveQueryCompletionTask = Task { @MainActor [weak self, weak client] in
+                    guard let self, let client else { return }
+                    let applied = await self.drainArchiveStanzas(queryID: queryID)
+                    guard !Task.isCancelled,
+                          applied,
+                          self.archiveSyncStarted,
+                          self.archiveActiveQueryID == queryID,
+                          self.client === client else { return }
+                    self.archiveQueryTimeoutTask?.cancel()
+                    self.archiveQueryTimeoutTask = nil
+                    self.archiveQueryCompletionTask = nil
+                    self.archiveActiveQueryID = nil
+                    self.completeArchivePage(
+                        result,
+                        client: client,
+                        requestedAfter: after,
+                        retry: retry
+                    )
+                }
+            }
+        }
+    }
+
+    private func drainArchiveStanzas(queryID: String) async -> Bool {
+        while archiveSyncStarted,
+              archiveActiveQueryID == queryID,
+              !Task.isCancelled {
+            guard !archiveStanzaBuffer.isEmpty else { return true }
+            let count = min(archiveApplyBatchSize, archiveStanzaBuffer.count)
+            let batch = Array(archiveStanzaBuffer.prefix(count))
+            archiveStanzaBuffer.removeFirst(count)
+
+            for stanza in batch where stanza.queryID == queryID {
+                if let current = archiveHighWatermark {
+                    archiveHighWatermark = max(current, stanza.timestamp)
+                } else {
+                    archiveHighWatermark = stanza.timestamp
+                }
+                handle(
+                    message: stanza.message,
+                    timestamp: stanza.timestamp,
+                    archiveID: stanza.archiveID,
+                    isArchived: true
+                )
+            }
+
+            // Give SwiftUI, UIScrollView and AVFoundation delegate tasks a
+            // chance to run after every decryption.
+            await Task.yield()
+            try? await Task.sleep(
+                nanoseconds: ArchiveMessageBatchPolicy.interSliceDelayNanoseconds
+            )
+        }
+        return false
+    }
+
+    private func completeArchivePage(
+        _ result: Result<MessageArchiveManagementModule.QueryResult, XMPPError>,
+        client: XMPPClient,
+        requestedAfter after: String?,
+        retry: Int
+    ) {
+        if archiveBufferOverflowed {
+            archiveBufferOverflowed = false
+            archiveStanzaBuffer.removeAll(keepingCapacity: true)
+            archivePassMutations.removeAll(keepingCapacity: true)
+            eventHandler?(.recoverableError(
+                "Сервер вернул слишком большую страницу MAM; синхронизация остановлена без потери контрольной точки."
+            ))
+            finishArchiveSync(client: client, succeeded: false)
+            return
+        }
+        if archiveRejectedSource {
+            archiveRejectedSource = false
+            archiveStanzaBuffer.removeAll(keepingCapacity: true)
+            archivePassMutations.removeAll(keepingCapacity: true)
+            eventHandler?(.recoverableError(
+                "MAM вернул результат от неожиданного отправителя; страница отклонена."
+            ))
+            finishArchiveSync(client: client, succeeded: false)
+            return
+        }
+
+        switch result {
+        case .success(let response):
+            archiveHasCompletedPage = true
+            let workBudgetReached = archiveWorkBudget.recordCompletedPage()
+            if archiveIsBootstrapQuery {
+                // Like Monal, start from a small recent window backed by local
+                // storage instead of replaying the whole account archive.
+                let checkpoint = resolvedArchiveCheckpoint(
+                    cursor: response.rsm?.last,
+                    caughtUp: true
+                )
+                archiveLastCompletedCursor = checkpoint.cursor
+                finishArchiveSync(
+                    client: client,
+                    succeeded: true,
+                    checkpoint: checkpoint
+                )
+                return
+            }
+            switch archivePagination.decision(
+                complete: response.complete,
+                lastCursor: response.rsm?.last,
+                requestedAfter: after
+            ) {
+            case .finished:
+                let checkpoint = resolvedArchiveCheckpoint(
+                    cursor: response.rsm?.last ?? after,
+                    caughtUp: true
+                )
+                archiveLastCompletedCursor = checkpoint.cursor
+                finishArchiveSync(
+                    client: client,
+                    succeeded: true,
+                    checkpoint: checkpoint
+                )
+            case .next(let cursor):
+                archiveResumeAfter = cursor
+                let checkpoint = resolvedArchiveCheckpoint(
+                    cursor: cursor,
+                    caughtUp: false
+                )
+                archiveLastCompletedCursor = checkpoint.cursor
+                if workBudgetReached {
+                    if checkpoint.advances(over: archiveSyncCheckpoint) {
+                        finishArchiveSync(
+                            client: client,
+                            succeeded: true,
+                            checkpoint: checkpoint
+                        )
+                    } else {
+                        archivePassMutations.removeAll(keepingCapacity: true)
+                        eventHandler?(.recoverableError(
+                            "MAM не продвинул контрольную точку; синхронизация приостановлена."
+                        ))
+                        finishArchiveSync(client: client, succeeded: false)
+                    }
+                } else {
+                    scheduleArchiveNextPage(client: client, after: cursor)
+                }
+            case .invalidCursor:
+                // An incomplete page without a new UID cannot be committed
+                // atomically. Drop its decoded mutations so the next attempt
+                // can safely request the same page again.
+                archivePassMutations.removeAll(keepingCapacity: true)
+                eventHandler?(.recoverableError(
+                    "MAM вернул некорректный курсор; страница отклонена без изменения истории."
+                ))
+                finishArchiveSync(client: client, succeeded: false)
+            }
+        case .failure(let error):
+            if retry < ArchiveSyncRecoveryPolicy.pageRetryLimit {
+                scheduleArchivePageRetry(
+                    client: client,
+                    after: after,
+                    retry: retry + 1
+                )
+            } else if ArchiveSyncCursorPolicy.shouldFallbackFromStoredCursor(
+                requestedAfter: after,
+                checkpoint: archiveSyncCheckpoint,
+                hasCompletedPage: archiveHasCompletedPage,
+                fallbackAlreadyUsed: archiveCursorFallbackUsed
+            ) {
+                // The server may have expired the UID because of archive
+                // retention. Fall back once to the legacy timestamp overlap;
+                // never loop between the two strategies automatically.
+                archiveCursorFallbackUsed = true
+                archivePagination = ArchiveSyncPagination()
+                archiveResumeAfter = nil
+                archiveHighWatermark = nil
+                archivePassMutations.removeAll(keepingCapacity: true)
+                queryArchive(client: client, after: nil, retry: 0)
+            } else {
+                eventHandler?(.recoverableError(
+                    "MAM: \(error.localizedDescription). Продолжим после следующего открытия приложения."
+                ))
+                finishArchiveSync(client: client, succeeded: false)
+            }
+        }
+    }
+
+    private func resolvedArchiveCheckpoint(
+        cursor: String?,
+        caughtUp: Bool
+    ) -> ArchiveSyncCheckpoint {
+        ArchiveSyncCursorPolicy.resolvedCheckpoint(
+            previous: archiveSyncCheckpoint,
+            cursor: cursor ?? archiveLastCompletedCursor,
+            highWatermark: archiveHighWatermark,
+            queryStartedAt: archiveSyncQueryStartedAt ?? Date(),
+            caughtUp: caughtUp
+        )
+    }
+
+    private func scheduleArchivePageRetry(
+        client: XMPPClient,
+        after: String?,
+        retry: Int
+    ) {
+        archiveRetryTask?.cancel()
+        archiveRetryTask = Task { @MainActor [weak self, weak client] in
+            let delaySeconds = min(8, 1 << max(0, retry - 1))
+            try? await Task.sleep(nanoseconds: UInt64(delaySeconds) * 1_000_000_000)
+            guard !Task.isCancelled,
+                  let self,
+                  let client,
+                  self.archiveSyncStarted,
+                  self.client === client else { return }
+            self.queryArchive(client: client, after: after, retry: retry)
+        }
+    }
+
+    private func scheduleArchiveNextPage(client: XMPPClient, after: String) {
+        archiveRetryTask?.cancel()
+        archiveRetryTask = Task { @MainActor [weak self, weak client] in
+            // A short hand-off between MAM pages lets SwiftUI render and lets
+            // the archive consumer apply the previous batch. Without it a
+            // large server archive can monopolize the main run loop.
+            try? await Task.sleep(
+                nanoseconds: ArchiveSyncRecoveryPolicy.interPageDelayNanoseconds
+            )
+            guard !Task.isCancelled,
+                  let self,
+                  let client,
+                  self.archiveSyncStarted,
+                  self.client === client else { return }
+            self.queryArchive(client: client, after: after, retry: 0)
+        }
+    }
+
+    private func scheduleArchiveQueryTimeout(client: XMPPClient, queryID: String) {
+        archiveQueryTimeoutTask?.cancel()
+        archiveQueryTimeoutTask = Task { @MainActor [weak self, weak client] in
+            try? await Task.sleep(
+                nanoseconds: ArchiveSyncRecoveryPolicy.queryTimeoutNanoseconds
+            )
+            guard !Task.isCancelled,
+                  let self,
+                  let client,
+                  self.archiveSyncStarted,
+                  self.archiveActiveQueryID == queryID,
+                  self.client === client else { return }
+            self.archiveQueryCompletionTask?.cancel()
+            self.archiveQueryCompletionTask = nil
+            self.archiveStanzaInbox.cancel(queryID: queryID)
+            self.archiveActiveQueryID = nil
+            self.archiveResumeAfter = self.archiveSyncCheckpoint?.cursor
+            self.archiveStanzaBuffer.removeAll(keepingCapacity: true)
+            self.archiveBufferOverflowed = false
+            self.archiveRejectedSource = false
+            self.archivePassMutations.removeAll(keepingCapacity: true)
+            self.eventHandler?(.recoverableError(
+                "MAM не ответил вовремя; синхронизация остановлена до следующего открытия приложения."
+            ))
+            self.finishArchiveSync(client: client, succeeded: false)
+        }
+    }
+
+    private func scheduleArchiveApplyTimeout(client: XMPPClient, queryID: String) {
+        archiveQueryTimeoutTask?.cancel()
+        archiveQueryTimeoutTask = Task { @MainActor [weak self, weak client] in
+            try? await Task.sleep(
+                nanoseconds: ArchiveSyncRecoveryPolicy.pageApplyTimeoutNanoseconds
+            )
+            guard !Task.isCancelled,
+                  let self,
+                  let client,
+                  self.archiveSyncStarted,
+                  self.archiveActiveQueryID == queryID,
+                  self.client === client else { return }
+            self.archiveQueryCompletionTask?.cancel()
+            self.archiveQueryCompletionTask = nil
+            self.archiveStanzaInbox.cancel(queryID: queryID)
+            self.archiveActiveQueryID = nil
+            self.archiveResumeAfter = self.archiveSyncCheckpoint?.cursor
+            self.archiveStanzaBuffer.removeAll(keepingCapacity: true)
+            self.archiveBufferOverflowed = false
+            self.archiveRejectedSource = false
+            self.archivePassMutations.removeAll(keepingCapacity: true)
+            self.eventHandler?(.recoverableError(
+                "Обработка MAM заняла слишком много времени; синхронизация приостановлена."
+            ))
+            self.finishArchiveSync(client: client, succeeded: false)
+        }
+    }
+
+    private func finishArchiveSync(
+        client: XMPPClient,
+        succeeded: Bool,
+        checkpoint: ArchiveSyncCheckpoint? = nil
+    ) {
+        guard archiveSyncStarted, self.client === client else {
+            if !archiveSyncStarted {
+                setArchiveSyncIndicator(false)
+            }
+            return
+        }
+        archiveRetryTask?.cancel()
+        archiveRetryTask = nil
+        archiveQueryTimeoutTask?.cancel()
+        archiveQueryTimeoutTask = nil
+        archiveQueryCompletionTask?.cancel()
+        archiveQueryCompletionTask = nil
+        archiveStanzaInbox.cancel()
+        archiveActiveQueryID = nil
+        archiveStanzaBuffer.removeAll(keepingCapacity: true)
+        archiveBufferOverflowed = false
+        archiveRejectedSource = false
+        client.module(.omemo).mamSyncFinished(for: nil)
+
+        if succeeded, !archivePassMutations.isEmpty {
+            let mutations = archivePassMutations
+            archivePassMutations.removeAll(keepingCapacity: true)
+            eventHandler?(.archiveBatch(mutations))
+        } else {
+            archivePassMutations.removeAll(keepingCapacity: true)
+        }
+        setArchiveSyncIndicator(false)
+        archiveSyncStarted = false
+        archiveIsBootstrapQuery = false
+        archiveHighWatermark = nil
+        archiveHasCompletedPage = false
+        archiveCursorFallbackUsed = false
+
+        if succeeded {
+            let resolvedCheckpoint = checkpoint ?? ArchiveSyncCheckpoint(
+                timestamp: archiveSyncQueryStartedAt ?? Date(),
+                cursor: archiveLastCompletedCursor ?? archiveSyncCheckpoint?.cursor
+            )
+            archiveSyncCheckpoint = resolvedCheckpoint
+            archiveLastCompletedCursor = resolvedCheckpoint.cursor
+            archiveSyncQueryStartedAt = nil
+            archiveSyncCompletedForConnection = true
+            archiveResumeAfter = nil
+            archiveRetrySuppressedUntilActivation = false
+            eventHandler?(.archiveSyncCompleted(resolvedCheckpoint))
+            return
+        }
+
+        archiveSyncQueryStartedAt = nil
+        archiveSyncCompletedForConnection = false
+        archiveResumeAfter = archiveSyncCheckpoint?.cursor
+        archiveLastCompletedCursor = archiveSyncCheckpoint?.cursor
+        archiveRetrySuppressedUntilActivation = true
+        eventHandler?(.recoverableError(
+            "Синхронизация истории приостановлена. Luma продолжит после возврата в приложение."
+        ))
+    }
+
+    private func refreshArchiveIfNeeded(client: XMPPClient) {
+        guard !archiveSyncStarted,
+              !archiveSyncSuspended,
+              self.client === client else { return }
+        if !archiveSyncCompletedForConnection {
+            archiveRetrySuppressedUntilActivation = false
+            startArchiveSync(client: client)
+            return
+        }
+        let lastCheckpoint = archiveSyncCheckpoint?.timestamp ?? .distantPast
+        guard Date().timeIntervalSince(lastCheckpoint) >= archiveForegroundRefreshInterval else { return }
+        archiveSyncCompletedForConnection = false
+        archiveResumeAfter = nil
+        archiveSyncQueryStartedAt = nil
+        startArchiveSync(client: client)
+    }
+
+    private func suspendArchiveSyncForDisconnect() {
+        setArchiveSyncIndicator(false)
+        guard let client else {
+            archiveSyncStarted = false
+            archiveStanzaInbox.cancel()
+            archiveActiveQueryID = nil
+            archiveStanzaBuffer.removeAll(keepingCapacity: false)
+            archiveBufferOverflowed = false
+            archiveRejectedSource = false
+            archivePassMutations.removeAll(keepingCapacity: false)
+            return
+        }
+        archiveRetryTask?.cancel()
+        archiveRetryTask = nil
+        archiveQueryTimeoutTask?.cancel()
+        archiveQueryTimeoutTask = nil
+        archiveQueryCompletionTask?.cancel()
+        archiveQueryCompletionTask = nil
+        if archiveSyncStarted {
+            archiveResumeAfter = archiveSyncCheckpoint?.cursor
+            client.module(.omemo).mamSyncFinished(for: nil)
+        }
+        archiveStanzaInbox.cancel()
+        archiveActiveQueryID = nil
+        archiveSyncStarted = false
+        archiveSyncCompletedForConnection = false
+        archiveRetrySuppressedUntilActivation = false
+        archiveSyncQueryStartedAt = nil
+        archiveWorkBudget = ArchiveSyncWorkBudget()
+        archiveHighWatermark = nil
+        archiveLastCompletedCursor = archiveSyncCheckpoint?.cursor
+        archiveHasCompletedPage = false
+        archiveCursorFallbackUsed = false
+        archivePassMutations.removeAll(keepingCapacity: false)
+        archiveIsBootstrapQuery = false
+        archiveStanzaBuffer.removeAll(keepingCapacity: false)
+        archiveBufferOverflowed = false
+        archiveRejectedSource = false
+    }
+
+    private func pauseArchiveSync(client: XMPPClient) {
+        setArchiveSyncIndicator(false)
+        guard archiveSyncStarted, self.client === client else { return }
+        archiveRetryTask?.cancel()
+        archiveRetryTask = nil
+        archiveQueryTimeoutTask?.cancel()
+        archiveQueryTimeoutTask = nil
+        archiveQueryCompletionTask?.cancel()
+        archiveQueryCompletionTask = nil
+        archiveStanzaInbox.cancel()
+        archiveResumeAfter = archiveSyncCheckpoint?.cursor
+        archiveActiveQueryID = nil
+        archiveSyncStarted = false
+        archiveSyncCompletedForConnection = false
+        archiveSyncQueryStartedAt = nil
+        archivePagination = ArchiveSyncPagination()
+        archiveWorkBudget = ArchiveSyncWorkBudget()
+        archiveHighWatermark = nil
+        archiveLastCompletedCursor = archiveSyncCheckpoint?.cursor
+        archiveHasCompletedPage = false
+        archiveCursorFallbackUsed = false
+        archivePassMutations.removeAll(keepingCapacity: true)
+        archiveIsBootstrapQuery = false
+        archiveStanzaBuffer.removeAll(keepingCapacity: true)
+        archiveBufferOverflowed = false
+        archiveRejectedSource = false
+        client.module(.omemo).mamSyncFinished(for: nil)
+    }
+
+    private func setArchiveSyncIndicator(_ visible: Bool) {
+        guard archiveSyncIndicatorVisible != visible else { return }
+        archiveSyncIndicatorVisible = visible
+        eventHandler?(.archiveSyncing(visible))
+    }
+
+    private static var platformName: String {
+#if os(macOS)
+        return "macOS"
+#else
+        return "iOS/iPadOS"
+#endif
+    }
+
+    private static func reasonText(_ reason: XMPPClient.State.DisconnectionReason) -> String? {
+        if case .none = reason {
+            return nil
+        }
+        return reason.localizedDescription
+    }
+}
+
+enum LumaXMPPError: LocalizedError {
+    case notConnected
+    case connection(String)
+    case omemoInitializationFailed
+    case omemoNotReady
+    case omemoEncryptionFailed(Int)
+    case cannotCreateChat
+    case invalidRoomJID
+    case emptyRoomNickname
+    case roomNotJoined
+    case groupEncryptionRequiresNonAnonymousRoom
+    case groupEncryptionConfigurationUnsupported
+    case groupEncryptionParticipantsHidden([String])
+    case groupEncryptionMemberListUnavailable(String)
+    case groupOMEMODevicesUnavailable([String])
+    case groupOMEMOSessionsUnavailable([String])
+    case fileEncryptionFailed
+    case fileDecryptionFailed
+    case uploadDiscoveryFailed(String)
+    case uploadUnavailable(size: Int)
+    case uploadSlotFailed(String)
+    case uploadTransportFailed(String)
+    case uploadFailed(statusCode: Int?)
+    case downloadFailed
+    case invalidUploadURL
+    case insecureUploadURL
+    case avatarUpdateFailed(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .notConnected:
+            return "Нет соединения с XMPP-сервером."
+        case .connection(let message):
+            return "Не удалось подключиться: \(message)"
+        case .omemoInitializationFailed:
+            return "Не удалось инициализировать хранилище OMEMO."
+        case .omemoNotReady:
+            return "OMEMO ещё не готов. Подождите публикации ключей на сервере."
+        case .omemoEncryptionFailed(let code):
+            return code == SignalError.noSession.rawValue
+                ? "У контакта нет доступных OMEMO-устройств."
+                : "Не удалось зашифровать сообщение OMEMO (код \(code))."
+        case .cannotCreateChat:
+            return "Не удалось открыть чат с этим JID."
+        case .invalidRoomJID:
+            return "Введите адрес комнаты в формате room@conference.example.org."
+        case .emptyRoomNickname:
+            return "Введите псевдоним для группового чата."
+        case .roomNotJoined:
+            return "Сначала подключитесь к групповой комнате."
+        case .groupEncryptionRequiresNonAnonymousRoom:
+            return "Групповое OMEMO требует неанонимную MUC-комнату. Попросите владельца включить показ реальных JID (muc#roomconfig_whois = anyone)."
+        case .groupEncryptionConfigurationUnsupported:
+            return "Сервер не предлагает настройку неанонимной MUC-комнаты, необходимую для группового OMEMO."
+        case .groupEncryptionParticipantsHidden(let nicknames):
+            return "Нельзя безопасно зашифровать сообщение: комната скрывает JID участников \(nicknames.joined(separator: ", ")). Переподключитесь после включения неанонимного режима."
+        case .groupEncryptionMemberListUnavailable(let message):
+            return "Сообщение не отправлено: сервер не отдал полный список участников комнаты для OMEMO (\(message))."
+        case .groupOMEMODevicesUnavailable(let jids):
+            return "Сообщение не отправлено: OMEMO-устройства отсутствуют у \(jids.joined(separator: ", "))."
+        case .groupOMEMOSessionsUnavailable(let devices):
+            return "Сообщение не отправлено: не удалось создать OMEMO-сессию для \(devices.joined(separator: ", "))."
+        case .fileEncryptionFailed:
+            return "Не удалось зашифровать вложение."
+        case .fileDecryptionFailed:
+            return "Не удалось расшифровать вложение."
+        case .uploadDiscoveryFailed(let message):
+            return "Не удалось найти XEP-0363 HTTP Upload на сервере: \(message)"
+        case .uploadUnavailable(let size):
+            return "Сервер не предлагает HTTP Upload для файла размером \(ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .file))."
+        case .uploadSlotFailed(let message):
+            return "Prosody не выдал слот для загрузки: \(message)"
+        case .uploadTransportFailed(let message):
+            return "Не удалось отправить файл в HTTP Upload: \(message)"
+        case .uploadFailed(let statusCode):
+            if let statusCode {
+                return "HTTP Upload отклонил файл (HTTP \(statusCode))."
+            }
+            return "HTTP Upload вернул некорректный ответ."
+        case .downloadFailed:
+            return "Не удалось скачать вложение."
+        case .invalidUploadURL:
+            return "Получена некорректная ссылка на вложение."
+        case .insecureUploadURL:
+            return "Сервер предложил небезопасный HTTP Upload URL. Требуется HTTPS."
+        case .avatarUpdateFailed(let message):
+            return "Не удалось обновить аватар: \(message)"
+        }
+    }
+}

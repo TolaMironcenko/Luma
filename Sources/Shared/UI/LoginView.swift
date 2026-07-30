@@ -1,0 +1,149 @@
+import SwiftUI
+
+struct LoginView: View {
+    @ObservedObject var model: AppModel
+    @State private var jid = ""
+    @State private var password = ""
+    @State private var displayName = ""
+    @State private var resource = "Luma"
+    @State private var showAdvanced = false
+    @State private var manualHost = ""
+    @State private var manualPort = ""
+    @State private var directTLS = false
+
+    var body: some View {
+        ZStack {
+            LinearGradient(
+                colors: [
+                    Color(red: 0.08, green: 0.38, blue: 0.78),
+                    Color(red: 0.12, green: 0.62, blue: 0.96),
+                    Color(red: 0.44, green: 0.84, blue: 0.96)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
+
+            Circle()
+                .fill(.white.opacity(0.12))
+                .frame(width: 420, height: 420)
+                .offset(x: -210, y: -260)
+
+            ScrollView {
+                VStack(spacing: 28) {
+                    brand
+                    loginCard
+                }
+                .frame(maxWidth: 460)
+                .padding(.horizontal, 24)
+                .padding(.vertical, 48)
+                .frame(maxWidth: .infinity)
+            }
+        }
+    }
+
+    private var brand: some View {
+        VStack(spacing: 14) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 26, style: .continuous)
+                    .fill(.white)
+                    .frame(width: 88, height: 88)
+                    .shadow(color: .black.opacity(0.16), radius: 22, y: 10)
+                Image(systemName: "bubble.left.and.bubble.right.fill")
+                    .font(.system(size: 39, weight: .semibold))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [.blue, .cyan],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+            }
+
+            Text("Luma")
+                .font(.system(size: 42, weight: .bold, design: .rounded))
+                .foregroundStyle(.white)
+            Text("Приватный XMPP без привязки к одному серверу")
+                .font(.subheadline)
+                .foregroundStyle(.white.opacity(0.86))
+                .multilineTextAlignment(.center)
+        }
+    }
+
+    private var loginCard: some View {
+        VStack(spacing: 18) {
+            VStack(alignment: .leading, spacing: 7) {
+                Text("XMPP-аккаунт")
+                    .font(.headline)
+                TextField("you@example.org", text: $jid)
+                    .textFieldStyle(.roundedBorder)
+                    .disableAutocorrection(true)
+            }
+
+            VStack(alignment: .leading, spacing: 7) {
+                Text("Пароль")
+                    .font(.headline)
+                SecureField("Пароль", text: $password)
+                    .textFieldStyle(.roundedBorder)
+            }
+
+            DisclosureGroup("Дополнительные настройки", isExpanded: $showAdvanced) {
+                VStack(spacing: 14) {
+                    TextField("Отображаемое имя", text: $displayName)
+                        .textFieldStyle(.roundedBorder)
+                    TextField("Ресурс устройства", text: $resource)
+                        .textFieldStyle(.roundedBorder)
+                    TextField("Сервер вручную (необязательно)", text: $manualHost)
+                        .textFieldStyle(.roundedBorder)
+                    TextField(directTLS ? "Порт, обычно 5223" : "Порт, обычно 5222", text: $manualPort)
+                        .textFieldStyle(.roundedBorder)
+                    Toggle("Direct TLS", isOn: $directTLS)
+                    Text("Без ручного адреса Luma использует DNS SRV и автоматически выбирает STARTTLS/direct TLS.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(.top, 14)
+            }
+
+            Button {
+                Task { await signIn() }
+            } label: {
+                HStack {
+                    if model.isAuthenticating {
+                        ProgressView().controlSize(.small)
+                    }
+                    Text(model.isAuthenticating ? "Подключение…" : "Войти")
+                        .fontWeight(.semibold)
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 34)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .disabled(model.isAuthenticating)
+
+            Label("Сообщения отправляются с OMEMO. Пароль хранится только в Keychain.", systemImage: "lock.shield.fill")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .padding(26)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .shadow(color: .black.opacity(0.14), radius: 24, y: 12)
+    }
+
+    private func signIn() async {
+        let port = Int(manualPort.trimmingCharacters(in: .whitespacesAndNewlines))
+        let account = AccountConfiguration(
+            jid: jid,
+            displayName: displayName,
+            resource: resource,
+            manualHost: manualHost,
+            manualPort: port,
+            usesDirectTLS: directTLS
+        )
+        await model.signIn(account: account, password: password)
+    }
+}
+

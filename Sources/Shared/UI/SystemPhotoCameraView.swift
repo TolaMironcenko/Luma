@@ -1,0 +1,159 @@
+import Foundation
+
+struct CapturedCameraMedia: Sendable {
+    let url: URL
+    let kind: ChatMessage.Kind
+}
+
+#if os(iOS)
+import SwiftUI
+import UniformTypeIdentifiers
+import UIKit
+
+@MainActor
+struct SystemPhotoCameraView: UIViewControllerRepresentable {
+    let onMedia: (Result<CapturedCameraMedia, Error>) -> Void
+    let onCancel: () -> Void
+
+    static var isAvailable: Bool {
+        UIImagePickerController.isSourceTypeAvailable(.camera)
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onMedia: onMedia, onCancel: onCancel)
+    }
+
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.delegate = context.coordinator
+        picker.sourceType = .camera
+        picker.mediaTypes = [UTType.image.identifier, UTType.movie.identifier]
+        picker.cameraCaptureMode = .photo
+        picker.videoQuality = .typeHigh
+        picker.videoMaximumDuration = 180
+        picker.allowsEditing = false
+        picker.modalPresentationStyle = .fullScreen
+        return picker
+    }
+
+    func updateUIViewController(
+        _ uiViewController: UIImagePickerController,
+        context: Context
+    ) {}
+
+    final class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+        private let onMedia: (Result<CapturedCameraMedia, Error>) -> Void
+        private let onCancel: () -> Void
+        private var completed = false
+
+        init(
+            onMedia: @escaping (Result<CapturedCameraMedia, Error>) -> Void,
+            onCancel: @escaping () -> Void
+        ) {
+            self.onMedia = onMedia
+            self.onCancel = onCancel
+        }
+
+        func imagePickerController(
+            _ picker: UIImagePickerController,
+            didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]
+        ) {
+            guard !completed else { return }
+            completed = true
+
+            let mediaType = (info[.mediaType] as? String).flatMap { UTType($0) }
+            if mediaType?.conforms(to: .movie) == true,
+               let sourceURL = info[.mediaURL] as? URL {
+                prepareMovie(from: sourceURL)
+                return
+            }
+
+            guard let image = info[.originalImage] as? UIImage else {
+                onMedia(.failure(SystemCameraError.missingMedia))
+                return
+            }
+            preparePhoto(image)
+        }
+
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+            guard !completed else { return }
+            completed = true
+            onCancel()
+        }
+
+        private func preparePhoto(_ image: UIImage) {
+            let completion = onMedia
+            DispatchQueue.global(qos: .userInitiated).async {
+                let result: Result<CapturedCameraMedia, Error>
+                do {
+                    let url = try Self.destinationURL(extension: "jpg")
+                    guard let data = image.jpegData(compressionQuality: 0.9),
+                          !data.isEmpty else {
+                        throw SystemCameraError.encodingFailed
+                    }
+                    try data.write(to: url, options: [.atomic])
+                    result = .success(CapturedCameraMedia(url: url, kind: .photo))
+                } catch {
+                    result = .failure(error)
+                }
+                DispatchQueue.main.async { completion(result) }
+            }
+        }
+
+        private func prepareMovie(from sourceURL: URL) {
+            let completion = onMedia
+            DispatchQueue.global(qos: .userInitiated).async {
+                let result: Result<CapturedCameraMedia, Error>
+                do {
+                    let fileExtension = sourceURL.pathExtension.isEmpty
+                        ? "mov"
+                        : sourceURL.pathExtension
+                    let destination = try Self.destinationURL(extension: fileExtension)
+                    try FileManager.default.copyItem(at: sourceURL, to: destination)
+                    let values = try destination.resourceValues(
+                        forKeys: [.fileSizeKey, .isRegularFileKey]
+                    )
+                    guard values.isRegularFile == true,
+                          (values.fileSize ?? 0) > 0 else {
+                        try? FileManager.default.removeItem(at: destination)
+                        throw SystemCameraError.emptyMovie
+                    }
+                    result = .success(CapturedCameraMedia(url: destination, kind: .video))
+                } catch {
+                    result = .failure(error)
+                }
+                DispatchQueue.main.async { completion(result) }
+            }
+        }
+
+        private static func destinationURL(extension fileExtension: String) throws -> URL {
+            let directory = FileManager.default.temporaryDirectory
+                .appendingPathComponent("LumaCameraMedia", isDirectory: true)
+            try FileManager.default.createDirectory(
+                at: directory,
+                withIntermediateDirectories: true
+            )
+            return directory.appendingPathComponent(
+                "camera-\(UUID().uuidString).\(fileExtension)"
+            )
+        }
+    }
+}
+
+private enum SystemCameraError: LocalizedError {
+    case missingMedia
+    case encodingFailed
+    case emptyMovie
+
+    var errorDescription: String? {
+        switch self {
+        case .missingMedia:
+            return "Камера не вернула фото или видео."
+        case .encodingFailed:
+            return "Не удалось подготовить фотографию к отправке."
+        case .emptyMovie:
+            return "Камера вернула пустой видеофайл. Повторите запись."
+        }
+    }
+}
+#endif
