@@ -1,0 +1,51 @@
+{
+  "originHash" : "a9b7decfad90e115a57d2c941faf30bf1f041c5fcd0d87ea51c92b76dfac7ca8",
+  "pins" : [
+    {
+      "identity" : "libsignal",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/tigase/libsignal",
+      "state" : {
+        "revision" : "d23d5af0d729cf66b93cea607f3f84a34b9fddfd",
+        "version" : "1.0.0"
+      }
+    },
+    {
+      "identity" : "martin",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/tigase/Martin.git",
+      "state" : {
+        "revision" : "1d70e9e7eb51a7faa500832be6400a39f86083f7",
+        "version" : "3.2.4"
+      }
+    },
+    {
+      "identity" : "martinomemo",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/tigase/MartinOMEMO.git",
+      "state" : {
+        "revision" : "3c162154d646aa258c9a86c0a07655a536e55a94",
+        "version" : "2.2.3"
+      }
+    },
+    {
+      "identity" : "tigase-logging.swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/tigase/tigase-logging.swift",
+      "state" : {
+        "revision" : "382e2e85e64f8b1e3fcb71a996a030bf1b62ecb3",
+        "version" : "1.0.0"
+      }
+    },
+    {
+      "identity" : "webrtc",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/stasel/WebRTC.git",
+      "state" : {
+        "revision" : "6ed87f05368632f71dc95c89c14c051561710925",
+        "version" : "150.0.0"
+      }
+    }
+  ],
+  "version" : 3
+}
