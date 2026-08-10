@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import Luma
 
 final class CryptoKitAESGCMEngineTests: XCTestCase {
@@ -10,10 +11,12 @@ final class CryptoKitAESGCMEngineTests: XCTestCase {
         var ciphertext = Data()
         var tag = Data()
 
-        XCTAssertTrue(engine.encrypt(iv: iv, key: key, message: plaintext, output: &ciphertext, tag: &tag))
+        XCTAssertTrue(
+            engine.encrypt(iv: iv, key: key, message: plaintext, output: &ciphertext, tag: &tag))
 
         var decrypted = Data()
-        XCTAssertTrue(engine.decrypt(iv: iv, key: key, encoded: ciphertext, auth: tag, output: &decrypted))
+        XCTAssertTrue(
+            engine.decrypt(iv: iv, key: key, encoded: ciphertext, auth: tag, output: &decrypted))
         XCTAssertEqual(decrypted, plaintext)
     }
 
@@ -23,11 +26,15 @@ final class CryptoKitAESGCMEngineTests: XCTestCase {
         let iv = Data(repeating: 0x22, count: 12)
         var ciphertext = Data()
         var tag = Data()
-        XCTAssertTrue(engine.encrypt(iv: iv, key: key, message: Data("secret".utf8), output: &ciphertext, tag: &tag))
-        tag[0] ^= 0x01
+        XCTAssertTrue(
+            engine.encrypt(
+                iv: iv, key: key, message: Data("secret".utf8), output: &ciphertext, tag: &tag))
+        var modifiedTag = tag
+        modifiedTag[0] ^= 0x01
 
         var decrypted = Data()
-        XCTAssertFalse(engine.decrypt(iv: iv, key: key, encoded: ciphertext, auth: tag, output: &decrypted))
+        XCTAssertFalse(
+            engine.decrypt(
+                iv: iv, key: key, encoded: ciphertext, auth: modifiedTag, output: &decrypted))
     }
 }
-
