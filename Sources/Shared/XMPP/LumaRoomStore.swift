@@ -6,17 +6,17 @@ import Martin
 final class LumaRoomStore: RoomStore {
     typealias Room = RoomBase
 
-    private let dispatcher = QueueDispatcher(label: "LumaRoomStore")
+    private let queue = DispatchQueue(label: "LumaRoomStore")
     private var roomsByJID: [BareJID: RoomBase] = [:]
 
     func rooms(for context: Context) -> [RoomBase] {
-        dispatcher.sync {
+        queue.sync {
             Array(roomsByJID.values)
         }
     }
 
     func room(for context: Context, with jid: BareJID) -> RoomBase? {
-        dispatcher.sync {
+        queue.sync {
             roomsByJID[jid]
         }
     }
@@ -26,8 +26,8 @@ final class LumaRoomStore: RoomStore {
         with jid: BareJID,
         nickname: String,
         password: String?
-    ) -> ConversationCreateResult<RoomBase> {
-        dispatcher.sync {
+    ) -> ConversationCreateResult {
+        queue.sync {
             if let room = roomsByJID[jid] {
                 return .found(room)
             }
@@ -36,7 +36,7 @@ final class LumaRoomStore: RoomStore {
                 jid: jid,
                 nickname: nickname,
                 password: password,
-                dispatcher: dispatcher
+                dispatcher: queue
             )
             roomsByJID[jid] = room
             return .created(room)
@@ -44,7 +44,7 @@ final class LumaRoomStore: RoomStore {
     }
 
     func close(room: RoomBase) -> Bool {
-        dispatcher.sync {
+        queue.sync {
             guard roomsByJID[room.jid] === room else { return false }
             roomsByJID.removeValue(forKey: room.jid)
             return true

@@ -3,7 +3,7 @@ import Combine
 import Foundation
 
 #if os(iOS)
-import UIKit
+    import UIKit
 #endif
 
 @MainActor
@@ -92,14 +92,14 @@ final class VideoNoteRecorder: NSObject, ObservableObject, AVCaptureFileOutputRe
             }
         }
 
-#if os(iOS)
-        try AVAudioSession.sharedInstance().setCategory(
-            .playAndRecord,
-            mode: .videoRecording,
-            options: [.defaultToSpeaker, .allowBluetoothHFP]
-        )
-        try AVAudioSession.sharedInstance().setActive(true)
-#endif
+        #if os(iOS)
+            try AVAudioSession.sharedInstance().setCategory(
+                .playAndRecord,
+                mode: .videoRecording,
+                options: [.defaultToSpeaker, .allowBluetoothHFP]
+            )
+            try AVAudioSession.sharedInstance().setActive(true)
+        #endif
 
         let graph = try await configureCaptureGraph()
         guard !Task.isCancelled, sessionGeneration == generation else {
@@ -118,10 +118,12 @@ final class VideoNoteRecorder: NSObject, ObservableObject, AVCaptureFileOutputRe
 
     func start() throws {
         guard lifecycle == .prepared,
-              isPrepared,
-              session.isRunning else { throw VideoNoteRecorderError.notPrepared }
+            isPrepared,
+            session.isRunning
+        else { throw VideoNoteRecorderError.notPrepared }
         guard !movieOutput.isRecording,
-              activeRecordingURL == nil else {
+            activeRecordingURL == nil
+        else {
             throw VideoNoteRecorderError.recordingBusy
         }
 
@@ -168,8 +170,9 @@ final class VideoNoteRecorder: NSObject, ObservableObject, AVCaptureFileOutputRe
                 guard let self else { return }
                 await self.stopMovieOutput()
                 guard !Task.isCancelled,
-                      self.lifecycle == .stopping,
-                      let url = self.activeRecordingURL else { return }
+                    self.lifecycle == .stopping,
+                    let url = self.activeRecordingURL
+                else { return }
                 self.scheduleFinalizationTimeout(for: url)
             }
         case .stopping:
@@ -180,48 +183,51 @@ final class VideoNoteRecorder: NSObject, ObservableObject, AVCaptureFileOutputRe
     }
 
     func switchCamera() async throws {
-#if os(iOS)
-        guard isPrepared,
-              lifecycle == .prepared,
-              let currentInput = cameraInput else {
-            throw VideoNoteRecorderError.notPrepared
-        }
-        let nextPosition: AVCaptureDevice.Position = isUsingFrontCamera ? .back : .front
-        guard let camera = AVCaptureDevice.default(
-            .builtInWideAngleCamera,
-            for: .video,
-            position: nextPosition
-        ) else {
-            throw VideoNoteRecorderError.alternateCameraUnavailable
-        }
-
-        let nextInput = try AVCaptureDeviceInput(device: camera)
-        let session = session
-        try await withCheckedThrowingContinuation {
-            (continuation: CheckedContinuation<Void, Error>) in
-            sessionQueue.async {
-                session.beginConfiguration()
-                session.removeInput(currentInput)
-                guard session.canAddInput(nextInput) else {
-                    if session.canAddInput(currentInput) {
-                        session.addInput(currentInput)
-                    }
-                    session.commitConfiguration()
-                    continuation.resume(throwing: VideoNoteRecorderError.configurationFailed)
-                    return
-                }
-                session.addInput(nextInput)
-                session.commitConfiguration()
-                continuation.resume()
+        #if os(iOS)
+            guard isPrepared,
+                lifecycle == .prepared,
+                let currentInput = cameraInput
+            else {
+                throw VideoNoteRecorderError.notPrepared
             }
-        }
+            let nextPosition: AVCaptureDevice.Position = isUsingFrontCamera ? .back : .front
+            guard
+                let camera = AVCaptureDevice.default(
+                    .builtInWideAngleCamera,
+                    for: .video,
+                    position: nextPosition
+                )
+            else {
+                throw VideoNoteRecorderError.alternateCameraUnavailable
+            }
 
-        cameraInput = nextInput
-        isUsingFrontCamera = nextPosition == .front
-        configureVideoConnection()
-#else
-        throw VideoNoteRecorderError.alternateCameraUnavailable
-#endif
+            let nextInput = try AVCaptureDeviceInput(device: camera)
+            let session = session
+            try await withCheckedThrowingContinuation {
+                (continuation: CheckedContinuation<Void, Error>) in
+                sessionQueue.async {
+                    session.beginConfiguration()
+                    session.removeInput(currentInput)
+                    guard session.canAddInput(nextInput) else {
+                        if session.canAddInput(currentInput) {
+                            session.addInput(currentInput)
+                        }
+                        session.commitConfiguration()
+                        continuation.resume(throwing: VideoNoteRecorderError.configurationFailed)
+                        return
+                    }
+                    session.addInput(nextInput)
+                    session.commitConfiguration()
+                    continuation.resume()
+                }
+            }
+
+            cameraInput = nextInput
+            isUsingFrontCamera = nextPosition == .front
+            configureVideoConnection()
+        #else
+            throw VideoNoteRecorderError.alternateCameraUnavailable
+        #endif
     }
 
     func toggleMicrophoneMuted() {
@@ -261,7 +267,8 @@ final class VideoNoteRecorder: NSObject, ObservableObject, AVCaptureFileOutputRe
 
     private func requestStop(afterMinimumDuration minimumDuration: TimeInterval) {
         guard isRecording,
-              lifecycle == .starting || lifecycle == .recording else { return }
+            lifecycle == .starting || lifecycle == .recording
+        else { return }
         stopRequested = true
         requestedMinimumDuration = max(
             requestedMinimumDuration,
@@ -271,11 +278,13 @@ final class VideoNoteRecorder: NSObject, ObservableObject, AVCaptureFileOutputRe
     }
 
     private func recordingDidStart(url: URL) {
-        guard VideoNoteRecordingLifecycle.acceptsCompletion(
-            activeURL: activeRecordingURL,
-            outputURL: url
-        ), isRecording,
-        lifecycle == .starting || lifecycle == .stopping else { return }
+        guard
+            VideoNoteRecordingLifecycle.acceptsCompletion(
+                activeURL: activeRecordingURL,
+                outputURL: url
+            ), isRecording,
+            lifecycle == .starting || lifecycle == .stopping
+        else { return }
 
         startupTimeoutTask?.cancel()
         startupTimeoutTask = nil
@@ -293,11 +302,12 @@ final class VideoNoteRecorder: NSObject, ObservableObject, AVCaptureFileOutputRe
                 guard let self else { return }
                 await self.stopMovieOutput()
                 guard !Task.isCancelled,
-                      self.lifecycle == .stopping,
-                      VideoNoteRecordingLifecycle.acceptsCompletion(
+                    self.lifecycle == .stopping,
+                    VideoNoteRecordingLifecycle.acceptsCompletion(
                         activeURL: self.activeRecordingURL,
                         outputURL: url
-                      ) else { return }
+                    )
+                else { return }
                 self.scheduleFinalizationTimeout(for: url)
             }
             return
@@ -319,9 +329,10 @@ final class VideoNoteRecorder: NSObject, ObservableObject, AVCaptureFileOutputRe
 
     private func scheduleStopAfterActualStartIfNeeded() {
         guard stopRequested,
-              lifecycle == .recording,
-              startedAt != nil,
-              let url = activeRecordingURL else { return }
+            lifecycle == .recording,
+            startedAt != nil,
+            let url = activeRecordingURL
+        else { return }
 
         stopRequestTask?.cancel()
         let minimumDuration = requestedMinimumDuration
@@ -331,20 +342,22 @@ final class VideoNoteRecorder: NSObject, ObservableObject, AVCaptureFileOutputRe
         stopRequestTask = Task { @MainActor [weak self] in
             while true {
                 guard !Task.isCancelled,
-                      let self,
-                      self.lifecycle == .recording,
-                      VideoNoteRecordingLifecycle.acceptsCompletion(
+                    let self,
+                    self.lifecycle == .recording,
+                    VideoNoteRecordingLifecycle.acceptsCompletion(
                         activeURL: self.activeRecordingURL,
                         outputURL: url
-                      ) else { return }
+                    )
+                else { return }
 
                 let snapshot = await self.movieOutputSnapshot()
                 guard !Task.isCancelled,
-                      self.lifecycle == .recording,
-                      VideoNoteRecordingLifecycle.acceptsCompletion(
+                    self.lifecycle == .recording,
+                    VideoNoteRecordingLifecycle.acceptsCompletion(
                         activeURL: self.activeRecordingURL,
                         outputURL: url
-                      ) else { return }
+                    )
+                else { return }
 
                 if !snapshot.isRecording {
                     // AVFoundation stopped without the user's stop reaching
@@ -374,30 +387,34 @@ final class VideoNoteRecorder: NSObject, ObservableObject, AVCaptureFileOutputRe
             }
 
             guard !Task.isCancelled,
-                  let self,
-                  self.lifecycle == .recording,
-                  VideoNoteRecordingLifecycle.acceptsCompletion(
+                let self,
+                self.lifecycle == .recording,
+                VideoNoteRecordingLifecycle.acceptsCompletion(
                     activeURL: self.activeRecordingURL,
                     outputURL: url
-                  ) else { return }
+                )
+            else { return }
 
             self.lifecycle = .stopping
             await self.stopMovieOutput()
             guard !Task.isCancelled,
-                  self.lifecycle == .stopping,
-                  VideoNoteRecordingLifecycle.acceptsCompletion(
+                self.lifecycle == .stopping,
+                VideoNoteRecordingLifecycle.acceptsCompletion(
                     activeURL: self.activeRecordingURL,
                     outputURL: url
-                  ) else { return }
+                )
+            else { return }
             self.scheduleFinalizationTimeout(for: url)
         }
     }
 
     private func recordingDidFinish(url: URL, error: Error?) {
-        guard VideoNoteRecordingLifecycle.acceptsCompletion(
-            activeURL: activeRecordingURL,
-            outputURL: url
-        ) else {
+        guard
+            VideoNoteRecordingLifecycle.acceptsCompletion(
+                activeURL: activeRecordingURL,
+                outputURL: url
+            )
+        else {
             // A delayed callback from an earlier attempt must not tear down a
             // newer capture graph. Do not delete it here: macOS can spell the
             // same temporary URL through a filesystem alias, and preserving a
@@ -433,10 +450,11 @@ final class VideoNoteRecorder: NSObject, ObservableObject, AVCaptureFileOutputRe
                 fallbackDuration: fallbackDuration
             )
             guard !Task.isCancelled,
-                  VideoNoteRecordingLifecycle.acceptsCompletion(
+                VideoNoteRecordingLifecycle.acceptsCompletion(
                     activeURL: self.activeRecordingURL,
                     outputURL: url
-                  ) else { return }
+                )
+            else { return }
             self.fileValidationTask = nil
 
             if self.discardCurrentRecording {
@@ -446,29 +464,33 @@ final class VideoNoteRecorder: NSObject, ObservableObject, AVCaptureFileOutputRe
             }
 
             if let inspection,
-               VideoNoteRecordingCompletionPolicy.wasRequestedOrReachedLimit(
-                stopRequested: wasStopRequested,
-                error: error,
-                recordedDuration: inspection.duration,
-                maximumDuration: VideoNoteStopPolicy.maximumCaptureDuration
-               ),
-               VideoNoteStopPolicy.isValidFinalDuration(inspection.duration) {
-                self.finishAndReset(.success(Recording(
-                    url: url,
-                    duration: inspection.duration
-                )))
+                VideoNoteRecordingCompletionPolicy.wasRequestedOrReachedLimit(
+                    stopRequested: wasStopRequested,
+                    error: error,
+                    recordedDuration: inspection.duration,
+                    maximumDuration: VideoNoteStopPolicy.maximumCaptureDuration
+                ),
+                VideoNoteStopPolicy.isValidFinalDuration(inspection.duration)
+            {
+                self.finishAndReset(
+                    .success(
+                        Recording(
+                            url: url,
+                            duration: inspection.duration
+                        )))
                 return
             }
 
             try? FileManager.default.removeItem(at: url)
             let failure: Error
             if !wasStopRequested,
-               !VideoNoteRecordingCompletionPolicy.wasRequestedOrReachedLimit(
-                stopRequested: false,
-                error: error,
-                recordedDuration: inspection?.duration ?? fallbackDuration,
-                maximumDuration: VideoNoteStopPolicy.maximumCaptureDuration
-               ) {
+                !VideoNoteRecordingCompletionPolicy.wasRequestedOrReachedLimit(
+                    stopRequested: false,
+                    error: error,
+                    recordedDuration: inspection?.duration ?? fallbackDuration,
+                    maximumDuration: VideoNoteStopPolicy.maximumCaptureDuration
+                )
+            {
                 failure = VideoNoteRecorderError.recordingInterrupted
             } else if !VideoNoteRecordingCompletionPolicy.shouldKeepOutput(for: error), let error {
                 failure = error
@@ -501,10 +523,11 @@ final class VideoNoteRecorder: NSObject, ObservableObject, AVCaptureFileOutputRe
         return await withCheckedContinuation { continuation in
             sessionQueue.async {
                 let seconds = CMTimeGetSeconds(output.recordedDuration)
-                continuation.resume(returning: MovieOutputSnapshot(
-                    isRecording: output.isRecording,
-                    recordedDuration: seconds.isFinite && seconds > 0 ? seconds : 0
-                ))
+                continuation.resume(
+                    returning: MovieOutputSnapshot(
+                        isRecording: output.isRecording,
+                        recordedDuration: seconds.isFinite && seconds > 0 ? seconds : 0
+                    ))
             }
         }
     }
@@ -532,21 +555,23 @@ final class VideoNoteRecorder: NSObject, ObservableObject, AVCaptureFileOutputRe
                 nanoseconds: VideoNoteStopPolicy.startupTimeoutNanoseconds
             )
             guard !Task.isCancelled,
-                  let self,
-                  self.lifecycle == .starting,
-                  VideoNoteRecordingLifecycle.acceptsCompletion(
+                let self,
+                self.lifecycle == .starting,
+                VideoNoteRecordingLifecycle.acceptsCompletion(
                     activeURL: self.activeRecordingURL,
                     outputURL: url
-                  ) else { return }
+                )
+            else { return }
 
             self.lifecycle = .stopping
             await self.stopMovieOutput()
             guard !Task.isCancelled,
-                  self.lifecycle == .stopping,
-                  VideoNoteRecordingLifecycle.acceptsCompletion(
+                self.lifecycle == .stopping,
+                VideoNoteRecordingLifecycle.acceptsCompletion(
                     activeURL: self.activeRecordingURL,
                     outputURL: url
-                  ) else { return }
+                )
+            else { return }
             self.scheduleFinalizationTimeout(for: url)
         }
     }
@@ -558,12 +583,13 @@ final class VideoNoteRecorder: NSObject, ObservableObject, AVCaptureFileOutputRe
                 nanoseconds: VideoNoteStopPolicy.finalizationTimeoutNanoseconds
             )
             guard !Task.isCancelled,
-                  let self,
-                  self.lifecycle == .stopping,
-                  VideoNoteRecordingLifecycle.acceptsCompletion(
+                let self,
+                self.lifecycle == .stopping,
+                VideoNoteRecordingLifecycle.acceptsCompletion(
                     activeURL: self.activeRecordingURL,
                     outputURL: url
-                  ) else { return }
+                )
+            else { return }
 
             // A few macOS camera drivers stop the file output but delay its
             // delegate callback until the capture session itself is flushed.
@@ -574,42 +600,47 @@ final class VideoNoteRecorder: NSObject, ObservableObject, AVCaptureFileOutputRe
                 nanoseconds: VideoNoteStopPolicy.finalizationRecoveryGraceNanoseconds
             )
             guard !Task.isCancelled,
-                  self.lifecycle == .stopping,
-                  VideoNoteRecordingLifecycle.acceptsCompletion(
+                self.lifecycle == .stopping,
+                VideoNoteRecordingLifecycle.acceptsCompletion(
                     activeURL: self.activeRecordingURL,
                     outputURL: url
-                  ) else { return }
+                )
+            else { return }
             let fallbackDuration = self.measuredWallClockDuration
             let inspection = await self.fileInspector.inspect(
                 url: url,
                 fallbackDuration: fallbackDuration
             )
             guard !Task.isCancelled,
-                  self.lifecycle == .stopping,
-                  VideoNoteRecordingLifecycle.acceptsCompletion(
+                self.lifecycle == .stopping,
+                VideoNoteRecordingLifecycle.acceptsCompletion(
                     activeURL: self.activeRecordingURL,
                     outputURL: url
-                  ) else { return }
+                )
+            else { return }
 
             self.finalizationTimeoutTask = nil
             if self.discardCurrentRecording {
                 try? FileManager.default.removeItem(at: url)
                 self.finishAndReset(nil)
             } else if let inspection,
-                      VideoNoteRecordingCompletionPolicy.wasRequestedOrReachedLimit(
-                        stopRequested: self.stopRequested,
-                        error: nil,
-                        recordedDuration: inspection.duration,
-                        maximumDuration: VideoNoteStopPolicy.maximumCaptureDuration
-                      ),
-                      VideoNoteStopPolicy.isValidFinalDuration(inspection.duration) {
+                VideoNoteRecordingCompletionPolicy.wasRequestedOrReachedLimit(
+                    stopRequested: self.stopRequested,
+                    error: nil,
+                    recordedDuration: inspection.duration,
+                    maximumDuration: VideoNoteStopPolicy.maximumCaptureDuration
+                ),
+                VideoNoteStopPolicy.isValidFinalDuration(inspection.duration)
+            {
                 // Some macOS camera drivers finalize the .mov but omit the
                 // delegate callback. A playable file is more authoritative
                 // than the missing callback and remains safe to send.
-                self.finishAndReset(.success(Recording(
-                    url: url,
-                    duration: inspection.duration
-                )))
+                self.finishAndReset(
+                    .success(
+                        Recording(
+                            url: url,
+                            duration: inspection.duration
+                        )))
             } else if !self.stopRequested {
                 try? FileManager.default.removeItem(at: url)
                 self.finishAndReset(.failure(VideoNoteRecorderError.recordingInterrupted))
@@ -653,9 +684,10 @@ final class VideoNoteRecorder: NSObject, ObservableObject, AVCaptureFileOutputRe
         isRecording = false
         isUsingFrontCamera = true
         isMicrophoneMuted = false
-#if os(iOS)
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-#endif
+        #if os(iOS)
+            try? AVAudioSession.sharedInstance().setActive(
+                false, options: .notifyOthersOnDeactivation)
+        #endif
     }
 
     private func waitForPreviousRecordingToFinish() async throws {
@@ -673,29 +705,61 @@ final class VideoNoteRecorder: NSObject, ObservableObject, AVCaptureFileOutputRe
 
     private func configureVideoConnection() {
         guard let connection = movieOutput.connection(with: .video) else { return }
-#if os(iOS)
-        configureInteroperableVideoCodec(for: connection)
-#endif
+        #if os(iOS)
+            configureInteroperableVideoCodec(for: connection)
+        #endif
         if connection.isVideoMirroringSupported {
             connection.automaticallyAdjustsVideoMirroring = false
             connection.isVideoMirrored = isUsingFrontCamera
         }
-#if os(iOS)
-        if connection.isVideoOrientationSupported {
-            connection.videoOrientation = Self.currentVideoOrientation
-        }
-#endif
+        #if os(iOS)
+            if #available(iOS 17.0, *) {
+                let angle = videoRotationAngle
+                if connection.isVideoRotationAngleSupported(angle) {
+                    connection.videoRotationAngle = angle
+                }
+            } else {
+                if connection.isVideoOrientationSupported {
+                    connection.videoOrientation = Self.currentVideoOrientation
+                }
+            }
+        #endif
     }
 
-#if os(iOS)
-    private func configureInteroperableVideoCodec(for connection: AVCaptureConnection) {
-        guard movieOutput.availableVideoCodecTypes.contains(.h264) else { return }
-        movieOutput.setOutputSettings(
-            [AVVideoCodecKey: AVVideoCodecType.h264],
-            for: connection
-        )
-    }
-#endif
+    #if os(iOS)
+        private var videoRotationAngle: CGFloat {
+            switch UIDevice.current.orientation {
+            case .portraitUpsideDown: return 180
+            case .landscapeLeft: return 90
+            case .landscapeRight: return 270
+            default: return 0
+            }
+        }
+
+        @available(iOS, deprecated: 17.0)
+        private static var currentVideoOrientation: AVCaptureVideoOrientation {
+            switch UIDevice.current.orientation {
+            case .portraitUpsideDown:
+                return .portraitUpsideDown
+            case .landscapeLeft:
+                return .landscapeRight
+            case .landscapeRight:
+                return .landscapeLeft
+            default:
+                return .portrait
+            }
+        }
+    #endif
+
+    #if os(iOS)
+        private func configureInteroperableVideoCodec(for connection: AVCaptureConnection) {
+            guard movieOutput.availableVideoCodecTypes.contains(.h264) else { return }
+            movieOutput.setOutputSettings(
+                [AVVideoCodecKey: AVVideoCodecType.h264],
+                for: connection
+            )
+        }
+    #endif
 
     private func resetCaptureGraph() {
         let session = session
@@ -728,19 +792,21 @@ final class VideoNoteRecorder: NSObject, ObservableObject, AVCaptureFileOutputRe
             sessionQueue.async {
                 session.beginConfiguration()
                 do {
-                    session.sessionPreset = session.canSetSessionPreset(.vga640x480)
+                    session.sessionPreset =
+                        session.canSetSessionPreset(.vga640x480)
                         ? .vga640x480
                         : .medium
 
-#if os(iOS)
-                    let camera = AVCaptureDevice.default(
-                        .builtInWideAngleCamera,
-                        for: .video,
-                        position: .front
-                    ) ?? AVCaptureDevice.default(for: .video)
-#else
-                    let camera = AVCaptureDevice.default(for: .video)
-#endif
+                    #if os(iOS)
+                        let camera =
+                            AVCaptureDevice.default(
+                                .builtInWideAngleCamera,
+                                for: .video,
+                                position: .front
+                            ) ?? AVCaptureDevice.default(for: .video)
+                    #else
+                        let camera = AVCaptureDevice.default(for: .video)
+                    #endif
                     guard let camera else {
                         throw VideoNoteRecorderError.cameraUnavailable
                     }
@@ -768,11 +834,12 @@ final class VideoNoteRecorder: NSObject, ObservableObject, AVCaptureFileOutputRe
                         preferredTimescale: 600
                     )
                     session.commitConfiguration()
-                    continuation.resume(returning: CaptureGraph(
-                        cameraInput: cameraInput,
-                        microphoneInput: microphoneInput,
-                        usesFrontCamera: camera.position == .front
-                    ))
+                    continuation.resume(
+                        returning: CaptureGraph(
+                            cameraInput: cameraInput,
+                            microphoneInput: microphoneInput,
+                            usesFrontCamera: camera.position == .front
+                        ))
                 } catch {
                     session.commitConfiguration()
                     continuation.resume(throwing: error)
@@ -792,8 +859,9 @@ final class VideoNoteRecorder: NSObject, ObservableObject, AVCaptureFileOutputRe
             }
         }
         guard !Task.isCancelled,
-              sessionGeneration == generation,
-              session.isRunning else {
+            sessionGeneration == generation,
+            session.isRunning
+        else {
             throw CancellationError()
         }
     }
@@ -824,16 +892,18 @@ private actor VideoNoteFileInspector {
                 try? await Task.sleep(nanoseconds: delay)
             }
             guard let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]),
-                  values.isRegularFile == true,
-                  let size = values.fileSize,
-                  size > 1_024 else { continue }
+                values.isRegularFile == true,
+                let size = values.fileSize,
+                size > 1_024
+            else { continue }
 
             let asset = AVURLAsset(url: url)
             guard let duration = try? await asset.load(.duration),
-                  duration.seconds.isFinite,
-                  duration.seconds > 0.04,
-                  let tracks = try? await asset.loadTracks(withMediaType: .video),
-                  !tracks.isEmpty else { continue }
+                duration.seconds.isFinite,
+                duration.seconds > 0.04,
+                let tracks = try? await asset.loadTracks(withMediaType: .video),
+                !tracks.isEmpty
+            else { continue }
             return Inspection(duration: duration.seconds)
         }
 
@@ -842,9 +912,10 @@ private actor VideoNoteFileInspector {
         // of macOS camera drivers that delay movie metadata longer than the
         // delegate callback itself.
         guard fallbackDuration > 0.25,
-              let values = try? url.resourceValues(forKeys: [.fileSizeKey]),
-              let size = values.fileSize,
-              size > 16_384 else { return nil }
+            let values = try? url.resourceValues(forKeys: [.fileSizeKey]),
+            let size = values.fileSize,
+            size > 16_384
+        else { return nil }
         return Inspection(duration: fallbackDuration)
     }
 }
@@ -872,20 +943,20 @@ enum VideoNoteStopPolicy {
 }
 
 #if os(iOS)
-private extension VideoNoteRecorder {
-    static var currentVideoOrientation: AVCaptureVideoOrientation {
-        switch UIDevice.current.orientation {
-        case .portraitUpsideDown:
-            return .portraitUpsideDown
-        case .landscapeLeft:
-            return .landscapeRight
-        case .landscapeRight:
-            return .landscapeLeft
-        default:
-            return .portrait
+    extension VideoNoteRecorder {
+        fileprivate static var currentVideoOrientation: AVCaptureVideoOrientation {
+            switch UIDevice.current.orientation {
+            case .portraitUpsideDown:
+                return .portraitUpsideDown
+            case .landscapeLeft:
+                return .landscapeRight
+            case .landscapeRight:
+                return .landscapeLeft
+            default:
+                return .portrait
+            }
         }
     }
-}
 #endif
 
 private enum VideoNoteRecorderError: LocalizedError {
@@ -920,7 +991,8 @@ private enum VideoNoteRecorderError: LocalizedError {
         case .recordingBusy:
             return "Предыдущая запись ещё завершается. Подождите секунду и повторите."
         case .recordingInterrupted:
-            return "Камера прервала запись раньше времени. Видеосообщение не отправлено. Повторите запись."
+            return
+                "Камера прервала запись раньше времени. Видеосообщение не отправлено. Повторите запись."
         case .finalizationTimedOut:
             return "Камера не смогла завершить видеофайл. Повторите запись."
         case .emptyRecording:

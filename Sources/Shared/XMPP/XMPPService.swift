@@ -1838,7 +1838,7 @@ final class XMPPService {
         makeMembersOnly: Bool
     ) async throws -> Bool {
         let roomJID = JID(room.jid)
-        let configuration: JabberDataElement = try await withCheckedThrowingContinuation {
+        let configuration: DataForm = try await withCheckedThrowingContinuation {
             continuation in
             muc.getRoomConfiguration(roomJid: roomJID) { result in
                 switch result {
@@ -1849,25 +1849,31 @@ final class XMPPService {
         }
 
         var supportsNonAnonymousRooms = false
-        if let field: ListSingleField = configuration.getField(named: "muc#roomconfig_whois") {
+        if let field: DataForm.ListSingleField = configuration.getField(
+            named: "muc#roomconfig_whois")
+        {
             field.value = "anyone"
             supportsNonAnonymousRooms = true
-        } else if let field: TextSingleField = configuration.getField(named: "muc#roomconfig_whois")
+        } else if let field: DataForm.TextSingleField = configuration.getField(
+            named: "muc#roomconfig_whois")
         {
             field.value = "anyone"
             supportsNonAnonymousRooms = true
         }
-        if let field: ListMultiField = configuration.getField(named: "muc#roomconfig_getmemberlist")
+        if let field: DataForm.ListMultiField = configuration.getField(
+            named: "muc#roomconfig_getmemberlist")
         {
             field.value = Array(Set(field.value + ["moderator", "participant"])).sorted()
         }
         if makeMembersOnly,
-            let field: BooleanField = configuration.getField(named: "muc#roomconfig_membersonly")
+            let field: DataForm.BooleanField = configuration.getField(
+                named: "muc#roomconfig_membersonly")
         {
             field.value = true
         }
         if makeMembersOnly,
-            let field: BooleanField = configuration.getField(named: "muc#roomconfig_persistentroom")
+            let field: DataForm.BooleanField = configuration.getField(
+                named: "muc#roomconfig_persistentroom")
         {
             field.value = true
         }
@@ -1876,7 +1882,7 @@ final class XMPPService {
             (continuation: CheckedContinuation<Void, Error>) in
             muc.setRoomConfiguration(roomJid: roomJID, configuration: configuration) { result in
                 switch result {
-                case .success(let value): continuation.resume(returning: value)
+                case .success: continuation.resume()
                 case .failure(let error): continuation.resume(throwing: error)
                 }
             }

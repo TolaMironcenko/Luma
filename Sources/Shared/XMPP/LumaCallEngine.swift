@@ -889,7 +889,7 @@ private final class LumaJingleSession: JingleSession {
 
 // MARK: - Live WebRTC call
 
-private final class LumaWebRTCCall: NSObject, @unchecked Sendable, RTCPeerConnectionDelegate {
+private final class LumaWebRTCCall: NSObject, RTCPeerConnectionDelegate, @unchecked Sendable {
     let id = UUID()
     let startedAt = Date()
     unowned let engine: LumaCallEngine
