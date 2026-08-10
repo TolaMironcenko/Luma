@@ -211,11 +211,11 @@ extension WatchSessionModel: WCSessionDelegate {
         }
     }
 
-    nonisolated func sessionDidDeactivate(_ session: WCSession) {
-        Task { @MainActor in
-            phoneReachable = false
-        }
-    }
+    // nonisolated func sessionDidDeactivate(_ session: WCSession) {
+    //     Task { @MainActor in
+    //         phoneReachable = false
+    //     }
+    // }
 
     nonisolated func sessionReachabilityDidChange(_ session: WCSession) {
         Task { @MainActor in phoneReachable = session.isReachable }
