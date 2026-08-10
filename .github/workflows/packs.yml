@@ -22,7 +22,7 @@ jobs:
       - name: Build Xcode Workspace
         run: |
           xcodebuild build \
-            -workspace Luma.xcworkspace \
+            -workspace project.xcworkspace \
             -scheme Luma \
             -configuration Release \
             -sdk iphoneos \
@@ -56,7 +56,7 @@ jobs:
       - name: Build macOS App
         run: |
           xcodebuild build \
-            -workspace Luma.xcworkspace \
+            -workspace project.xcworkspace \
             -scheme LumaMac \
             -configuration Release \
             CODE_SIGNING_ALLOWED=NO \
