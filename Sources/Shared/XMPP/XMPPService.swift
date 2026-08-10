@@ -1838,51 +1838,42 @@ final class XMPPService {
         makeMembersOnly: Bool
     ) async throws -> Bool {
         let roomJID = JID(room.jid)
-        let configuration: JabberDataElement = try await withCheckedThrowingContinuation {
-            continuation in
-            muc.getRoomConfiguration(roomJid: roomJID) { result in
-                switch result {
-                case .success(let value): continuation.resume(returning: value)
-                case .failure(let error): continuation.resume(throwing: error)
-                }
+        let roomConfig: RoomConfig = try await withCheckedThrowingContinuation { continuation in
+            muc.roomConfiguration(roomJid: roomJID) { result in
+                continuation.resume(with: result)
             }
         }
-
+        
         var supportsNonAnonymousRooms = false
-        if let field: ListSingleField = configuration.getField(named: "muc#roomconfig_whois") {
-            field.value = "anyone"
-            supportsNonAnonymousRooms = true
-        } else if let field: TextSingleField = configuration.getField(named: "muc#roomconfig_whois")
-        {
-            field.value = "anyone"
+        
+        if roomConfig.hasField(for: "muc#roomconfig_whois") {
+            roomConfig.whois = .anyone
             supportsNonAnonymousRooms = true
         }
-        if let field: ListMultiField = configuration.getField(named: "muc#roomconfig_getmemberlist")
-        {
-            field.value = Array(Set(field.value + ["moderator", "participant"])).sorted()
+        
+        if roomConfig.hasField(for: "muc#roomconfig_getmemberlist") {
+            let current = roomConfig.getMemberList ?? []
+            roomConfig.getMemberList = Array(Set(current + ["moderator", "participant"])).sorted()
         }
-        if makeMembersOnly,
-            let field: BooleanField = configuration.getField(named: "muc#roomconfig_membersonly")
-        {
-            field.value = true
+        
+        if makeMembersOnly, roomConfig.hasField(for: "muc#roomconfig_membersonly") {
+            roomConfig.membersOnly = true
         }
-        if makeMembersOnly,
-            let field: BooleanField = configuration.getField(named: "muc#roomconfig_persistentroom")
-        {
-            field.value = true
+        
+        if makeMembersOnly, roomConfig.hasField(for: "muc#roomconfig_persistentroom") {
+            roomConfig.persistentRoom = true
         }
-
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation) in
-            muc.setRoomConfiguration(roomJid: roomJID, configuration: configuration) { result in
-                switch result {
-                case .success(let value): continuation.resume(returning: value)
-                case .failure(let error): continuation.resume(throwing: error)
-                }
+        
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            muc.setRoomConfiguration(roomJid: roomJID, configuration: roomConfig) { result in
+                continuation.resume(with: result)
             }
         }
+        
         if supportsNonAnonymousRooms {
             omemoConfiguredRoomJIDs.insert(room.jid.stringValue.lowercased())
         }
+        
         return supportsNonAnonymousRooms
     }
 
