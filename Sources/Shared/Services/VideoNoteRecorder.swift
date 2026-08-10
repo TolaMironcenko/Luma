@@ -942,22 +942,22 @@ enum VideoNoteStopPolicy {
     }
 }
 
-#if os(iOS)
-    extension VideoNoteRecorder {
-        fileprivate static var currentVideoOrientation: AVCaptureVideoOrientation {
-            switch UIDevice.current.orientation {
-            case .portraitUpsideDown:
-                return .portraitUpsideDown
-            case .landscapeLeft:
-                return .landscapeRight
-            case .landscapeRight:
-                return .landscapeLeft
-            default:
-                return .portrait
-            }
-        }
-    }
-#endif
+// #if os(iOS)
+//     extension VideoNoteRecorder {
+//         fileprivate static var currentVideoOrientation: AVCaptureVideoOrientation {
+//             switch UIDevice.current.orientation {
+//             case .portraitUpsideDown:
+//                 return .portraitUpsideDown
+//             case .landscapeLeft:
+//                 return .landscapeRight
+//             case .landscapeRight:
+//                 return .landscapeLeft
+//             default:
+//                 return .portrait
+//             }
+//         }
+//     }
+// #endif
 
 private enum VideoNoteRecorderError: LocalizedError {
     case cameraPermissionDenied

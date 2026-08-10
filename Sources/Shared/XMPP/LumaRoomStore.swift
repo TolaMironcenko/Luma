@@ -26,7 +26,7 @@ final class LumaRoomStore: RoomStore {
         with jid: BareJID,
         nickname: String,
         password: String?
-    ) -> ConversationCreateResult {
+    ) -> ConversationCreateResult<RoomBase> {
         queue.sync {
             if let room = roomsByJID[jid] {
                 return .found(room)
