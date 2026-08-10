@@ -1,0 +1,79 @@
+name: Build Unsigned iOS and macOS Apps
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-ios:
+    name: Build Unsigned iOS IPA
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Xcode version
+        uses: xcode-actions/setup-xcode@v1
+        with:
+          xcode-version: "latest"
+
+      - name: Build Xcode Workspace
+        run: |
+          xcodebuild build \
+            -workspace YourWorkspace.xcworkspace \
+            -scheme YouriOSScheme \
+            -configuration Release \
+            -sdk iphoneos \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            PROVISIONING_PROFILE_SPECIFIER=""
+
+      - name: Package into IPA
+        run: |
+          mkdir -p build/Payload
+          mv build/Release-iphoneos/YourApp.app build/Payload/
+          cd build && zip -r YourApp.ipa Payload/
+
+      - name: Upload iOS Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-ios-ipa
+          path: build/YourApp.ipa
+
+  build-macos:
+    name: Build macOS ZIP
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Xcode version
+        uses: xcode-actions/setup-xcode@v1
+        with:
+          xcode-version: "latest"
+
+      - name: Build macOS App
+        run: |
+          xcodebuild build \
+            -workspace YourWorkspace.xcworkspace \
+            -scheme YourmacOSScheme \
+            -configuration Release \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=""
+
+      - name: Compress macOS App
+        run: |
+          cd build/Release
+          zip -r macOS-App.zip YourApp.app
+
+      - name: Upload macOS Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-macos-zip
+          path: build/Release/macOS-App.zip
