@@ -1849,30 +1849,30 @@ final class XMPPService {
         }
 
         var supportsNonAnonymousRooms = false
-        if let field: JabberDataElement.ListSingleField = configuration.getField(
+        if let field: ListSingleField = configuration.getField(
             named: "muc#roomconfig_whois")
         {
             field.value = "anyone"
             supportsNonAnonymousRooms = true
-        } else if let field: JabberDataElement.TextSingleField = configuration.getField(
+        } else if let field: TextSingleField = configuration.getField(
             named: "muc#roomconfig_whois")
         {
             field.value = "anyone"
             supportsNonAnonymousRooms = true
         }
-        if let field: JabberDataElement.ListMultiField = configuration.getField(
+        if let field: ListMultiField = configuration.getField(
             named: "muc#roomconfig_getmemberlist")
         {
             field.value = Array(Set(field.value + ["moderator", "participant"])).sorted()
         }
         if makeMembersOnly,
-            let field: JabberDataElement.BooleanField = configuration.getField(
+            let field: BooleanField = configuration.getField(
                 named: "muc#roomconfig_membersonly")
         {
             field.value = true
         }
         if makeMembersOnly,
-            let field: JabberDataElement.BooleanField = configuration.getField(
+            let field: BooleanField = configuration.getField(
                 named: "muc#roomconfig_persistentroom")
         {
             field.value = true
