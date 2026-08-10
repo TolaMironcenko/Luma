@@ -11,7 +11,7 @@ on:
 jobs:
   build-ios:
     name: Build Unsigned iOS IPA
-    runs-on: macos-latest
+    runs-on: macos-26
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -24,8 +24,8 @@ jobs:
       - name: Build Xcode Workspace
         run: |
           xcodebuild build \
-            -workspace YourWorkspace.xcworkspace \
-            -scheme YouriOSScheme \
+            -workspace Luma.xcworkspace \
+            -scheme Luma \
             -configuration Release \
             -sdk iphoneos \
             CODE_SIGNING_ALLOWED=NO \
@@ -36,18 +36,18 @@ jobs:
       - name: Package into IPA
         run: |
           mkdir -p build/Payload
-          mv build/Release-iphoneos/YourApp.app build/Payload/
-          cd build && zip -r YourApp.ipa Payload/
+          mv build/Release-iphoneos/Luma.app build/Payload/
+          cd build && zip -r Luma.ipa Payload/
 
       - name: Upload iOS Artifact
         uses: actions/upload-artifact@v4
         with:
           name: unsigned-ios-ipa
-          path: build/YourApp.ipa
+          path: build/Luma.ipa
 
   build-macos:
     name: Build macOS ZIP
-    runs-on: macos-latest
+    runs-on: macos-26
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -60,8 +60,8 @@ jobs:
       - name: Build macOS App
         run: |
           xcodebuild build \
-            -workspace YourWorkspace.xcworkspace \
-            -scheme YourmacOSScheme \
+            -workspace Luma.xcworkspace \
+            -scheme LumaMac \
             -configuration Release \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
@@ -70,7 +70,7 @@ jobs:
       - name: Compress macOS App
         run: |
           cd build/Release
-          zip -r macOS-App.zip YourApp.app
+          zip -r macOS-App.zip LumaMac.app
 
       - name: Upload macOS Artifact
         uses: actions/upload-artifact@v4
