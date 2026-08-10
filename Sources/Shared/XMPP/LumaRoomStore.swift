@@ -1,22 +1,20 @@
 import Foundation
 import Martin
 
-/// Martin 3.2.4 does not expose `DefaultRoomStore.init()` outside its module.
-/// This mirrors its in-memory behavior so the app can register XEP-0045 MUC.
 final class LumaRoomStore: RoomStore {
     typealias Room = RoomBase
 
-    private let queue = DispatchQueue(label: "LumaRoomStore")
+    private let dispatcher = QueueDispatcher(label: "LumaRoomStore")
     private var roomsByJID: [BareJID: RoomBase] = [:]
 
     func rooms(for context: Context) -> [RoomBase] {
-        queue.sync {
+        dispatcher.sync {
             Array(roomsByJID.values)
         }
     }
 
     func room(for context: Context, with jid: BareJID) -> RoomBase? {
-        queue.sync {
+        dispatcher.sync {
             roomsByJID[jid]
         }
     }
@@ -27,7 +25,7 @@ final class LumaRoomStore: RoomStore {
         nickname: String,
         password: String?
     ) -> ConversationCreateResult<RoomBase> {
-        queue.sync {
+        dispatcher.sync {
             if let room = roomsByJID[jid] {
                 return .found(room)
             }
@@ -36,7 +34,7 @@ final class LumaRoomStore: RoomStore {
                 jid: jid,
                 nickname: nickname,
                 password: password,
-                dispatcher: QueueDispatcher(queue: queue)
+                dispatcher: dispatcher
             )
             roomsByJID[jid] = room
             return .created(room)
@@ -44,7 +42,7 @@ final class LumaRoomStore: RoomStore {
     }
 
     func close(room: RoomBase) -> Bool {
-        queue.sync {
+        dispatcher.sync {
             guard roomsByJID[room.jid] === room else { return false }
             roomsByJID.removeValue(forKey: room.jid)
             return true
