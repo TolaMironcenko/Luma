@@ -1,5 +1,5 @@
-import Combine
 import AVFoundation
+import Combine
 import Foundation
 import UniformTypeIdentifiers
 import WebRTC
@@ -7,7 +7,8 @@ import WebRTC
 @MainActor
 final class AppModel: ObservableObject {
     @Published private(set) var account: AccountConfiguration?
-    @Published private(set) var connectionStatus: XMPPService.ConnectionStatus = .disconnected(reason: nil)
+    @Published private(set) var connectionStatus: XMPPService.ConnectionStatus = .disconnected(
+        reason: nil)
     private(set) var conversations: [Conversation] = [] {
         willSet {
             if !isApplyingArchiveBatch {
@@ -131,7 +132,8 @@ final class AppModel: ObservableObject {
                 }
 
                 guard self.account != nil else {
-                    let error = "Войдите в XMPP-аккаунт на iPhone, затем повторите отправку с Apple Watch."
+                    let error =
+                        "Войдите в XMPP-аккаунт на iPhone, затем повторите отправку с Apple Watch."
                     self.errorMessage = error
                     self.watchBridge.reportVoiceResult(
                         transferID: voice.transferID,
@@ -168,7 +170,9 @@ final class AppModel: ObservableObject {
                     messageID: voice.stableMessageID
                 )
                 let success = messageID != nil
-                let failure = success ? nil : (self.errorMessage ?? "Не удалось отправить голосовое сообщение.")
+                let failure =
+                    success
+                    ? nil : (self.errorMessage ?? "Не удалось отправить голосовое сообщение.")
                 if success {
                     self.informationalMessage = "Голосовое сообщение с Apple Watch отправлено."
                 } else if self.errorMessage == nil {
@@ -214,7 +218,8 @@ final class AppModel: ObservableObject {
         if selectedMessagesCacheConversationID == selectedConversationID {
             return selectedMessagesCache
         }
-        let sorted = messages
+        let sorted =
+            messages
             .filter { $0.conversationID == selectedConversationID }
             .sorted { lhs, rhs in
                 if lhs.timestamp == rhs.timestamp { return lhs.id < rhs.id }
@@ -376,7 +381,8 @@ final class AppModel: ObservableObject {
             guard let password = try credentials.password(for: account.normalizedJID) else {
                 throw ReconnectError.passwordMissing
             }
-            try await xmpp.reconnectIfNeeded(password: password)
+            try await xmpp.reconnectIfNeeded(
+                password: password, archiveCheckpoint: durableArchiveSyncCheckpoint)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -504,7 +510,8 @@ final class AppModel: ObservableObject {
             errorMessage = "Введите псевдоним для группового чата."
             return
         }
-        let validInvitees = invitees
+        let validInvitees =
+            invitees
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
             .filter(Self.isValidJID)
 
@@ -534,9 +541,12 @@ final class AppModel: ObservableObject {
 
     func joinGroup(jid rawJID: String, nickname preferredNickname: String? = nil) async {
         let jid = rawJID.lowercased()
-        guard let index = conversations.firstIndex(where: { $0.id == jid && $0.isGroup }) else { return }
+        guard let index = conversations.firstIndex(where: { $0.id == jid && $0.isGroup }) else {
+            return
+        }
         guard !conversations[index].isGroupJoined,
-              joiningRoomJIDs.insert(jid).inserted else { return }
+            joiningRoomJIDs.insert(jid).inserted
+        else { return }
         defer { joiningRoomJIDs.remove(jid) }
         let trimmedNickname = preferredNickname?.trimmingCharacters(in: .whitespacesAndNewlines)
         let nickname: String
@@ -565,7 +575,9 @@ final class AppModel: ObservableObject {
     func leaveGroup(jid rawJID: String) {
         let jid = rawJID.lowercased()
         xmpp.leaveRoom(roomJID: jid)
-        guard let index = conversations.firstIndex(where: { $0.id == jid && $0.isGroup }) else { return }
+        guard let index = conversations.firstIndex(where: { $0.id == jid && $0.isGroup }) else {
+            return
+        }
         conversations[index].isGroupJoined = false
         conversations[index].shouldAutojoin = false
         conversations[index].occupantCount = 0
@@ -573,7 +585,8 @@ final class AppModel: ObservableObject {
     }
 
     func inviteMembers(_ rawJIDs: [String], to roomJID: String) async {
-        let jids = rawJIDs
+        let jids =
+            rawJIDs
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
             .filter(Self.isValidJID)
         guard !jids.isEmpty else {
@@ -597,14 +610,16 @@ final class AppModel: ObservableObject {
     ) async {
         let text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty,
-              let account,
-              let peer = explicitJID ?? selectedConversation?.jid else { return }
+            let account,
+            let peer = explicitJID ?? selectedConversation?.jid
+        else { return }
         let conversation = conversations.first { $0.id == peer.lowercased() }
         let isGroup = conversation?.isGroup == true
         let encrypted = encryptionEnabled(for: peer)
         let replyTarget = replyingTo.flatMap { message -> ChatMessage? in
             guard message.canBeRepliedTo,
-                  message.conversationID == peer.lowercased() else { return nil }
+                message.conversationID == peer.lowercased()
+            else { return nil }
             return message
         }
 
@@ -636,7 +651,8 @@ final class AppModel: ObservableObject {
                     return XMPPService.ReplyReference(
                         id: replyID,
                         authorJID: target.senderJID,
-                        fallbackAuthor: target.senderDisplayName ?? displayName(for: target.senderJID),
+                        fallbackAuthor: target.senderDisplayName
+                            ?? displayName(for: target.senderJID),
                         preview: target.quotePreview
                     )
                 },
@@ -660,7 +676,8 @@ final class AppModel: ObservableObject {
 
     func sendLocation(_ location: GeoLocation, to explicitJID: String? = nil) async {
         guard let account,
-              let peer = explicitJID ?? selectedConversation?.jid else { return }
+            let peer = explicitJID ?? selectedConversation?.jid
+        else { return }
         let conversation = conversations.first { $0.id == peer.lowercased() }
         let isGroup = conversation?.isGroup == true
         let encrypted = encryptionEnabled(for: peer)
@@ -702,8 +719,9 @@ final class AppModel: ObservableObject {
     func editMessage(id: String, newBody rawText: String) async {
         let text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty,
-              let index = messages.firstIndex(where: { $0.id == id }),
-              messages[index].canBeEdited else { return }
+            let index = messages.firstIndex(where: { $0.id == id }),
+            messages[index].canBeEdited
+        else { return }
 
         let previous = messages[index]
         guard text != previous.body else { return }
@@ -712,7 +730,8 @@ final class AppModel: ObservableObject {
         let encrypted = previous.security == .omemo
         correctionReceiptTargets[correctionID] = id
         if correctionReceiptTargets.count > 100,
-           let staleID = correctionReceiptTargets.keys.first(where: { $0 != correctionID }) {
+            let staleID = correctionReceiptTargets.keys.first(where: { $0 != correctionID })
+        {
             correctionReceiptTargets.removeValue(forKey: staleID)
         }
         updateMessage(id: id) {
@@ -736,7 +755,8 @@ final class AppModel: ObservableObject {
         } catch {
             correctionReceiptTargets.removeValue(forKey: correctionID)
             if let currentIndex = messages.firstIndex(where: { $0.id == id }),
-               messages[currentIndex].delivery == .sending {
+                messages[currentIndex].delivery == .sending
+            {
                 messages[currentIndex] = previous
                 updateConversationPreview(for: previous, incrementUnread: false)
             }
@@ -748,8 +768,9 @@ final class AppModel: ObservableObject {
 
     func retractMessage(id: String) async {
         guard let account,
-              let message = messages.first(where: { $0.id == id }),
-              message.canBeRetracted else { return }
+            let message = messages.first(where: { $0.id == id }),
+            message.canBeRetracted
+        else { return }
 
         let retractionID = UUID().uuidString
         do {
@@ -759,14 +780,15 @@ final class AppModel: ObservableObject {
                 retractionID: retractionID,
                 encrypted: message.security == .omemo
             )
-            applyRetraction(XMPPService.RetractionEnvelope(
-                peerJID: message.conversationID,
-                senderJID: account.normalizedJID,
-                targetID: message.id,
-                retractionID: retractionID,
-                timestamp: Date(),
-                isOutgoing: true
-            ))
+            applyRetraction(
+                XMPPService.RetractionEnvelope(
+                    peerJID: message.conversationID,
+                    senderJID: account.normalizedJID,
+                    targetID: message.id,
+                    retractionID: retractionID,
+                    timestamp: Date(),
+                    isOutgoing: true
+                ))
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -783,16 +805,18 @@ final class AppModel: ObservableObject {
         let normalizedConversationID = conversationID?.lowercased()
         let selected = messages.filter { message in
             ids.contains(message.id)
-                && (normalizedConversationID == nil || message.conversationID == normalizedConversationID)
+                && (normalizedConversationID == nil
+                    || message.conversationID == normalizedConversationID)
         }
         guard !selected.isEmpty else { return }
 
         let affectedConversations = Set(selected.map(\.conversationID))
         for message in selected {
-            locallyDeletedMessageIDs.insert(Self.localDeletionKey(
-                messageID: message.id,
-                conversationID: message.conversationID
-            ))
+            locallyDeletedMessageIDs.insert(
+                Self.localDeletionKey(
+                    messageID: message.id,
+                    conversationID: message.conversationID
+                ))
             let pendingKey = Self.localDeletionKey(
                 messageID: message.id,
                 conversationID: message.conversationID
@@ -805,20 +829,27 @@ final class AppModel: ObservableObject {
                 }
                 if envelope.targetID == message.id { return false }
                 if let stanzaID = message.stanzaID,
-                   envelope.targetID == stanzaID { return false }
+                    envelope.targetID == stanzaID
+                {
+                    return false
+                }
                 return true
             }
             removeCachedMedia(for: message.id)
         }
-        let selectedKeys = Set(selected.map { Self.localDeletionKey(
-            messageID: $0.id,
-            conversationID: $0.conversationID
-        ) })
+        let selectedKeys = Set(
+            selected.map {
+                Self.localDeletionKey(
+                    messageID: $0.id,
+                    conversationID: $0.conversationID
+                )
+            })
         messages.removeAll { message in
-            selectedKeys.contains(Self.localDeletionKey(
-                messageID: message.id,
-                conversationID: message.conversationID
-            ))
+            selectedKeys.contains(
+                Self.localDeletionKey(
+                    messageID: message.id,
+                    conversationID: message.conversationID
+                ))
         }
         rebuildMessageIndex()
         for conversationID in affectedConversations {
@@ -835,10 +866,12 @@ final class AppModel: ObservableObject {
 
     @discardableResult
     func forwardMessages(_ selectedMessages: [ChatMessage], to rawRecipient: String) async -> Bool {
-        let recipient = rawRecipient
+        let recipient =
+            rawRecipient
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
-        let forwardableMessages = selectedMessages
+        let forwardableMessages =
+            selectedMessages
             .filter(\.canBeForwarded)
             .sorted { lhs, rhs in
                 if lhs.timestamp == rhs.timestamp { return lhs.id < rhs.id }
@@ -857,7 +890,8 @@ final class AppModel: ObservableObject {
         for message in forwardableMessages {
             guard await forwardMessageItem(message, to: recipient) else {
                 if forwardedCount > 0 {
-                    informationalMessage = "Переслано сообщений: \(forwardedCount) из \(forwardableMessages.count)."
+                    informationalMessage =
+                        "Переслано сообщений: \(forwardedCount) из \(forwardableMessages.count)."
                 }
                 return false
             }
@@ -870,7 +904,8 @@ final class AppModel: ObservableObject {
     }
 
     private func forwardMessageItem(_ message: ChatMessage, to recipient: String) async -> Bool {
-        let attribution = "↪ Переслано от \(message.senderDisplayName ?? displayName(for: message.senderJID))"
+        let attribution =
+            "↪ Переслано от \(message.senderDisplayName ?? displayName(for: message.senderJID))"
 
         switch message.kind {
         case .text:
@@ -923,17 +958,20 @@ final class AppModel: ObservableObject {
     func message(withID id: String, in conversationID: String? = nil) -> ChatMessage? {
         guard let conversationID else {
             if let index = firstMessageIndexByID[id],
-               messages.indices.contains(index),
-               messages[index].id == id {
+                messages.indices.contains(index),
+                messages[index].id == id
+            {
                 return messages[index]
             }
             return messages.first { $0.stanzaID == id }
         }
         let normalized = conversationID.lowercased()
-        guard let index = messageIndex(
-            referenceID: id,
-            conversationID: normalized
-        ) else { return nil }
+        guard
+            let index = messageIndex(
+                referenceID: id,
+                conversationID: normalized
+            )
+        else { return nil }
         return messages[index]
     }
 
@@ -994,7 +1032,8 @@ final class AppModel: ObservableObject {
         thumbnailData preparedThumbnailData: Data? = nil
     ) async -> String? {
         guard let account,
-              let peer = explicitJID ?? selectedConversation?.jid else { return nil }
+            let peer = explicitJID ?? selectedConversation?.jid
+        else { return nil }
         errorMessage = nil
         if connectionStatus != .connected {
             await reconnect()
@@ -1085,7 +1124,8 @@ final class AppModel: ObservableObject {
 
     func retryMediaMessage(_ message: ChatMessage) async {
         guard canRetryMediaMessage(message),
-              let localURL = mediaPreviewURLs[message.id] else { return }
+            let localURL = mediaPreviewURLs[message.id]
+        else { return }
         let activityToken = beginMediaSendActivity()
         defer { endMediaSendActivity(activityToken) }
         errorMessage = nil
@@ -1139,7 +1179,8 @@ final class AppModel: ObservableObject {
             do {
                 let staged = try await mediaFileIO.stageAttachmentDraft(from: source)
                 let filename = Self.safeFilename(staged.filename)
-                let contentType = staged.contentTypeIdentifier.flatMap { UTType($0) }
+                let contentType =
+                    staged.contentTypeIdentifier.flatMap { UTType($0) }
                     ?? UTType(filenameExtension: source.pathExtension)
                 let kind = preferredKind ?? Self.mediaKind(for: contentType, filename: filename)
                 let mimeType = contentType?.preferredMIMEType ?? "application/octet-stream"
@@ -1148,15 +1189,16 @@ final class AppModel: ObservableObject {
                     kind: kind,
                     mimeType: mimeType
                 )
-                drafts.append(AttachmentDraft(
-                    url: staged.url,
-                    filename: filename,
-                    mimeType: mimeType,
-                    kind: kind,
-                    duration: analysis.duration,
-                    byteCount: staged.byteCount,
-                    thumbnailData: analysis.thumbnailData
-                ))
+                drafts.append(
+                    AttachmentDraft(
+                        url: staged.url,
+                        filename: filename,
+                        mimeType: mimeType,
+                        kind: kind,
+                        duration: analysis.duration,
+                        byteCount: staged.byteCount,
+                        thumbnailData: analysis.thumbnailData
+                    ))
             } catch {
                 lastPreparationError = error
             }
@@ -1280,13 +1322,15 @@ final class AppModel: ObservableObject {
 
     func prepareMediaPreview(_ message: ChatMessage) async {
         guard Self.supportsInlinePreview(message.kind),
-              message.remoteAttachmentURL != nil,
-              mediaPreviewURLs[message.id] == nil,
-              loadingMediaIDs.insert(message.id).inserted else { return }
+            message.remoteAttachmentURL != nil,
+            mediaPreviewURLs[message.id] == nil,
+            loadingMediaIDs.insert(message.id).inserted
+        else { return }
         defer { loadingMediaIDs.remove(message.id) }
 
         do {
-            let output = try await localAttachmentURL(for: message, directoryName: "LumaMediaPreviews")
+            let output = try await localAttachmentURL(
+                for: message, directoryName: "LumaMediaPreviews")
             mediaPreviewURLs[message.id] = output
             await analyzeMediaPreview(
                 at: output,
@@ -1373,7 +1417,8 @@ final class AppModel: ObservableObject {
     }
 
     func typingText(for conversation: Conversation) -> String? {
-        let names = typingParticipantsByConversation[conversation.id.lowercased()]
+        let names =
+            typingParticipantsByConversation[conversation.id.lowercased()]
             .map { Array($0.values) } ?? []
         return ChatTypingPolicy.displayText(names: names, isGroup: conversation.isGroup)
     }
@@ -1398,7 +1443,8 @@ final class AppModel: ObservableObject {
                 return
             }
             guard let self,
-                  self.localChatStateByConversation[conversationID] == .composing else { return }
+                self.localChatStateByConversation[conversationID] == .composing
+            else { return }
             self.transitionLocalChatState(.paused, in: conversation)
             self.localTypingPauseTasks[conversationID] = nil
         }
@@ -1413,13 +1459,14 @@ final class AppModel: ObservableObject {
 
     func toggleReaction(_ emoji: String, on sourceMessage: ChatMessage) async {
         guard let account,
-              let message = message(
-                  withID: sourceMessage.id,
-                  in: sourceMessage.conversationID
-              ),
-              message.canBeReactedTo,
-              let targetID = message.reactionIdentifier,
-              let selectedEmoji = MessageReactionPolicy.sanitized([emoji]).first else { return }
+            let message = message(
+                withID: sourceMessage.id,
+                in: sourceMessage.conversationID
+            ),
+            message.canBeReactedTo,
+            let targetID = message.reactionIdentifier,
+            let selectedEmoji = MessageReactionPolicy.sanitized([emoji]).first
+        else { return }
 
         let previous = message.reactionEmojis(from: account.normalizedJID)
         var updated = previous
@@ -1467,7 +1514,9 @@ final class AppModel: ObservableObject {
     }
 
     func setEncryptionPreference(_ preference: EncryptionPreference, for jid: String) {
-        guard let index = conversations.firstIndex(where: { $0.id == jid.lowercased() }) else { return }
+        guard let index = conversations.firstIndex(where: { $0.id == jid.lowercased() }) else {
+            return
+        }
         conversations[index].encryptionPreference = preference
         schedulePersist()
         syncWatch()
@@ -1539,7 +1588,8 @@ final class AppModel: ObservableObject {
     }
 
     private func updateArchiveSyncSuspensionForMedia() {
-        let shouldSuspend = videoNoteCaptureIsActive
+        let shouldSuspend =
+            videoNoteCaptureIsActive
             || mediaSendActivity.isActive
             || !mediaPreparationTokens.isEmpty
         guard shouldSuspend != archiveSyncIsSuspendedForMedia else { return }
@@ -1574,7 +1624,8 @@ final class AppModel: ObservableObject {
                 )
             } catch {
                 guard attempt < maximumAttempts,
-                      Self.isRetryableMediaSendError(error) else { throw error }
+                    Self.isRetryableMediaSendError(error)
+                else { throw error }
                 if connectionStatus != .connected {
                     await reconnect()
                 }
@@ -1588,7 +1639,7 @@ final class AppModel: ObservableObject {
         guard let error = error as? LumaXMPPError else { return false }
         switch error {
         case .notConnected, .connection, .uploadDiscoveryFailed,
-             .uploadSlotFailed, .uploadTransportFailed:
+            .uploadSlotFailed, .uploadTransportFailed:
             return true
         case .uploadFailed(let statusCode):
             guard let statusCode else { return true }
@@ -1680,13 +1731,15 @@ final class AppModel: ObservableObject {
             return
         case .groupMessageEcho(let roomJID, let messageID, let stanzaID, let senderJID):
             if let index = messageIndex(id: messageID, conversationID: roomJID)
-                ?? messageIndex(referenceID: stanzaID, conversationID: roomJID) {
+                ?? messageIndex(referenceID: stanzaID, conversationID: roomJID)
+            {
                 messages[index].stanzaID = stanzaID
                 messages[index].senderJID = senderJID
-                messageIndexByStanzaKey[Self.localDeletionKey(
-                    messageID: stanzaID,
-                    conversationID: roomJID
-                )] = index
+                messageIndexByStanzaKey[
+                    Self.localDeletionKey(
+                        messageID: stanzaID,
+                        conversationID: roomJID
+                    )] = index
                 if messages[index].delivery == .sending {
                     messages[index].delivery = .sent
                 }
@@ -1699,7 +1752,9 @@ final class AppModel: ObservableObject {
                 nickname: envelope.nickname,
                 shouldAutojoin: envelope.joined
             )
-            if let index = conversations.firstIndex(where: { $0.id == envelope.roomJID.lowercased() }) {
+            if let index = conversations.firstIndex(where: {
+                $0.id == envelope.roomJID.lowercased()
+            }) {
                 conversations[index].isGroupJoined = envelope.joined
                 conversations[index].occupantCount = envelope.occupantCount
             }
@@ -1738,6 +1793,21 @@ final class AppModel: ObservableObject {
         case .archiveSyncCompleted(let checkpoint):
             lastSuccessfulMAMSync = checkpoint.timestamp
             lastSuccessfulMAMCursor = checkpoint.cursor
+            // Синхронно форсируем persist, чтобы checkpoint не потерялся
+            persistTask?.cancel()
+            persistTask = nil
+            Task { @MainActor [weak self] in
+                guard let self, let archive = self.archive else { return }
+                let snapshot = ChatArchive.Snapshot(
+                    conversations: self.conversations,
+                    messages: self.messages,
+                    locallyDeletedMessageIDs: self.locallyDeletedMessageIDs,
+                    rosterContactJIDs: self.rosterContactJIDs,
+                    lastSuccessfulMAMSync: self.lastSuccessfulMAMSync,
+                    lastSuccessfulMAMCursor: self.lastSuccessfulMAMCursor
+                )
+                try? await archive.save(snapshot)
+            }
         case .call(let call):
             activeCall = call
         case .callHistory(let entry):
@@ -1758,18 +1828,19 @@ final class AppModel: ObservableObject {
 
     private func applyArchiveBatch(_ mutations: [XMPPService.ArchiveMutation]) {
         guard !mutations.isEmpty else { return }
-        let selectedConversationWasMutated = selectedConversationID.map { selectedID in
-            mutations.contains { mutation in
-                switch mutation {
-                case .message(let envelope):
-                    return envelope.peerJID.lowercased() == selectedID
-                case .retraction(let envelope):
-                    return envelope.peerJID.lowercased() == selectedID
-                case .reaction(let envelope):
-                    return envelope.peerJID.lowercased() == selectedID
+        let selectedConversationWasMutated =
+            selectedConversationID.map { selectedID in
+                mutations.contains { mutation in
+                    switch mutation {
+                    case .message(let envelope):
+                        return envelope.peerJID.lowercased() == selectedID
+                    case .retraction(let envelope):
+                        return envelope.peerJID.lowercased() == selectedID
+                    case .reaction(let envelope):
+                        return envelope.peerJID.lowercased() == selectedID
+                    }
                 }
-            }
-        } ?? false
+            } ?? false
         isApplyingArchiveBatch = true
         for mutation in mutations {
             switch mutation {
@@ -1797,6 +1868,11 @@ final class AppModel: ObservableObject {
     }
 
     private func consumeMessage(_ envelope: XMPPService.MessageEnvelope) {
+        if let stanzaID = envelope.stanzaID,
+            messageIndex(referenceID: stanzaID, conversationID: envelope.peerJID) != nil
+        {
+            return  // уже есть это сообщение
+        }
         if envelope.isGroupMessage {
             upsertGroupConversation(
                 jid: envelope.peerJID,
@@ -1809,14 +1885,17 @@ final class AppModel: ObservableObject {
             messageID: envelope.id,
             conversationID: envelope.peerJID
         )
-        let correctionWasDeleted = envelope.correctionTargetID.map {
-            locallyDeletedMessageIDs.contains(Self.localDeletionKey(
-                messageID: $0,
-                conversationID: envelope.peerJID
-            ))
-        } ?? false
+        let correctionWasDeleted =
+            envelope.correctionTargetID.map {
+                locallyDeletedMessageIDs.contains(
+                    Self.localDeletionKey(
+                        messageID: $0,
+                        conversationID: envelope.peerJID
+                    ))
+            } ?? false
         guard !locallyDeletedMessageIDs.contains(deletionKey),
-              !correctionWasDeleted else { return }
+            !correctionWasDeleted
+        else { return }
         if envelope.correctionTargetID != nil {
             consumeCorrection(envelope)
             return
@@ -1861,17 +1940,19 @@ final class AppModel: ObservableObject {
         }
         applyPendingReactions(for: message)
         if !envelope.isArchived,
-           NotificationPolicy.shouldPresentMessage(
-               inserted: inserted,
-               isOutgoing: envelope.isOutgoing,
-               appIsActive: appIsActive,
-               selectedConversationID: selectedConversationID,
-               conversationID: envelope.peerJID
-           ) {
-            let notificationMessage = self.message(
-                withID: envelope.id,
-                in: envelope.peerJID
-            ) ?? message
+            NotificationPolicy.shouldPresentMessage(
+                inserted: inserted,
+                isOutgoing: envelope.isOutgoing,
+                appIsActive: appIsActive,
+                selectedConversationID: selectedConversationID,
+                conversationID: envelope.peerJID
+            )
+        {
+            let notificationMessage =
+                self.message(
+                    withID: envelope.id,
+                    in: envelope.peerJID
+                ) ?? message
             notifications.showIncomingMessage(
                 id: envelope.id,
                 sender: envelope.senderDisplayName ?? conversationName(for: envelope.peerJID),
@@ -1883,7 +1964,8 @@ final class AppModel: ObservableObject {
 
     private func recordCallHistory(_ entry: CallHistoryEntry) {
         guard let account else { return }
-        let direction: ChatMessage.Direction = entry.direction == .outgoing
+        let direction: ChatMessage.Direction =
+            entry.direction == .outgoing
             ? .outgoing
             : .incoming
         let metadata = CallHistoryMetadata(
@@ -1903,7 +1985,8 @@ final class AppModel: ObservableObject {
             duration: entry.duration,
             callHistory: metadata
         )
-        let isUnreadMissedCall = direction == .incoming
+        let isUnreadMissedCall =
+            direction == .incoming
             && entry.outcome == .missed
             && selectedConversationID != entry.peerJID.lowercased()
         _ = upsertMessage(message, incrementUnread: isUnreadMissedCall)
@@ -1955,18 +2038,20 @@ final class AppModel: ObservableObject {
             if let nickname, !nickname.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 conversations[index].groupNickname = nickname
             }
-            conversations[index].shouldAutojoin = conversations[index].shouldAutojoin || shouldAutojoin
+            conversations[index].shouldAutojoin =
+                conversations[index].shouldAutojoin || shouldAutojoin
             if let invitedBy { conversations[index].invitedBy = invitedBy }
         } else {
-            conversations.append(Conversation(
-                jid: normalized,
-                displayName: initialDisplayName,
-                encryptionPreference: .inheritGlobal,
-                kind: .group,
-                groupNickname: nickname,
-                shouldAutojoin: shouldAutojoin,
-                invitedBy: invitedBy
-            ))
+            conversations.append(
+                Conversation(
+                    jid: normalized,
+                    displayName: initialDisplayName,
+                    encryptionPreference: .inheritGlobal,
+                    kind: .group,
+                    groupNickname: nickname,
+                    shouldAutojoin: shouldAutojoin,
+                    invitedBy: invitedBy
+                ))
         }
         if !isApplyingArchiveBatch {
             sortConversations()
@@ -1975,7 +2060,8 @@ final class AppModel: ObservableObject {
 
     private var defaultGroupNickname: String {
         if let displayName = account?.displayName.trimmingCharacters(in: .whitespacesAndNewlines),
-           !displayName.isEmpty {
+            !displayName.isEmpty
+        {
             return displayName
         }
         return account?.normalizedJID.split(separator: "@").first.map(String.init) ?? "Luma"
@@ -1983,17 +2069,21 @@ final class AppModel: ObservableObject {
 
     private func consumeCorrection(_ envelope: XMPPService.MessageEnvelope) {
         guard let targetID = envelope.correctionTargetID,
-              !locallyDeletedMessageIDs.contains(Self.localDeletionKey(
-                messageID: targetID,
-                conversationID: envelope.peerJID
-              )),
-              envelope.kind == .text,
-              envelope.security != .decryptionFailed else { return }
+            !locallyDeletedMessageIDs.contains(
+                Self.localDeletionKey(
+                    messageID: targetID,
+                    conversationID: envelope.peerJID
+                )),
+            envelope.kind == .text,
+            envelope.security != .decryptionFailed
+        else { return }
 
-        guard let index = messageIndex(
-            id: targetID,
-            conversationID: envelope.peerJID
-        ) else {
+        guard
+            let index = messageIndex(
+                id: targetID,
+                conversationID: envelope.peerJID
+            )
+        else {
             let pendingKey = Self.localDeletionKey(
                 messageID: targetID,
                 conversationID: envelope.peerJID
@@ -2007,11 +2097,12 @@ final class AppModel: ObservableObject {
 
         let original = messages[index]
         guard !original.isRetracted,
-              original.kind == .text,
-              original.conversationID == envelope.peerJID.lowercased(),
-              original.senderJID == envelope.senderJID.lowercased(),
-              original.security == envelope.security,
-              original.editedAt == nil || envelope.timestamp >= original.editedAt! else { return }
+            original.kind == .text,
+            original.conversationID == envelope.peerJID.lowercased(),
+            original.senderJID == envelope.senderJID.lowercased(),
+            original.security == envelope.security,
+            original.editedAt == nil || envelope.timestamp >= original.editedAt!
+        else { return }
 
         messages[index].body = envelope.body
         messages[index].editedAt = envelope.timestamp
@@ -2036,18 +2127,24 @@ final class AppModel: ObservableObject {
             guard allowedSenders.contains(MessageReactionPolicy.bareJID(senderJID)) else { return }
         }
 
-        guard let index = messageIndex(
-            referenceID: envelope.targetID,
-            conversationID: conversationID
-        ) else {
+        guard
+            let index = messageIndex(
+                referenceID: envelope.targetID,
+                conversationID: conversationID
+            )
+        else {
             let key = pendingReactionKey(envelope)
             if let previous = pendingReactions[key],
-               previous.timestamp > envelope.timestamp { return }
+                previous.timestamp > envelope.timestamp
+            {
+                return
+            }
             pendingReactions[key] = envelope
             if pendingReactions.count > 200,
-               let staleKey = pendingReactions.min(by: {
-                   $0.value.timestamp < $1.value.timestamp
-               })?.key {
+                let staleKey = pendingReactions.min(by: {
+                    $0.value.timestamp < $1.value.timestamp
+                })?.key
+            {
                 pendingReactions.removeValue(forKey: staleKey)
             }
             return
@@ -2063,7 +2160,8 @@ final class AppModel: ObservableObject {
             )
         }
         if let existingIndex,
-           updatedMessage.reactions[existingIndex].updatedAt > envelope.timestamp {
+            updatedMessage.reactions[existingIndex].updatedAt > envelope.timestamp
+        {
             return
         }
 
@@ -2079,11 +2177,12 @@ final class AppModel: ObservableObject {
                 )
             }
         } else if !emojis.isEmpty {
-            updatedMessage.reactions.append(MessageReaction(
-                senderJID: senderJID,
-                emojis: emojis,
-                updatedAt: envelope.timestamp
-            ))
+            updatedMessage.reactions.append(
+                MessageReaction(
+                    senderJID: senderJID,
+                    emojis: emojis,
+                    updatedAt: envelope.timestamp
+                ))
         } else {
             return
         }
@@ -2108,7 +2207,7 @@ final class AppModel: ObservableObject {
         [
             envelope.peerJID.lowercased(),
             envelope.targetID,
-            envelope.senderJID.lowercased()
+            envelope.senderJID.lowercased(),
         ].joined(separator: "|")
     }
 
@@ -2123,7 +2222,8 @@ final class AppModel: ObservableObject {
 
     private func applyRemoteChatState(_ envelope: XMPPService.ChatStateEnvelope) {
         let conversationID = envelope.peerJID.lowercased()
-        let senderKey = envelope.isGroupMessage
+        let senderKey =
+            envelope.isGroupMessage
             ? envelope.senderJID.lowercased()
             : MessageReactionPolicy.bareJID(envelope.senderJID)
         let expiryKey = "\(conversationID)|\(senderKey)"
@@ -2139,7 +2239,8 @@ final class AppModel: ObservableObject {
         }
 
         var participants = typingParticipantsByConversation[conversationID] ?? [:]
-        participants[senderKey] = envelope.senderDisplayName
+        participants[senderKey] =
+            envelope.senderDisplayName
             ?? displayName(for: envelope.senderJID)
         typingParticipantsByConversation[conversationID] = participants
         remoteTypingExpiryTasks[expiryKey] = Task { @MainActor [weak self] in
@@ -2200,14 +2301,19 @@ final class AppModel: ObservableObject {
     }
 
     private func applyRetraction(_ envelope: XMPPService.RetractionEnvelope) {
-        guard !locallyDeletedMessageIDs.contains(Self.localDeletionKey(
-            messageID: envelope.targetID,
-            conversationID: envelope.peerJID
-        )) else { return }
-        guard let index = messageIndex(
-            id: envelope.targetID,
-            conversationID: envelope.peerJID
-        ) else {
+        guard
+            !locallyDeletedMessageIDs.contains(
+                Self.localDeletionKey(
+                    messageID: envelope.targetID,
+                    conversationID: envelope.peerJID
+                ))
+        else { return }
+        guard
+            let index = messageIndex(
+                id: envelope.targetID,
+                conversationID: envelope.peerJID
+            )
+        else {
             let pendingKey = Self.localDeletionKey(
                 messageID: envelope.targetID,
                 conversationID: envelope.peerJID
@@ -2221,8 +2327,9 @@ final class AppModel: ObservableObject {
 
         let original = messages[index]
         guard original.conversationID == envelope.peerJID.lowercased(),
-              original.senderJID == envelope.senderJID.lowercased(),
-              original.retractedAt == nil || envelope.timestamp >= original.retractedAt! else { return }
+            original.senderJID == envelope.senderJID.lowercased(),
+            original.retractedAt == nil || envelope.timestamp >= original.retractedAt!
+        else { return }
 
         removeCachedMedia(for: original.id)
         messages[index].body = "Сообщение удалено"
@@ -2243,10 +2350,11 @@ final class AppModel: ObservableObject {
         if envelope.isOutgoing, messages[index].delivery == .sending {
             messages[index].delivery = .sent
         }
-        pendingCorrections.removeValue(forKey: Self.localDeletionKey(
-            messageID: original.id,
-            conversationID: original.conversationID
-        ))
+        pendingCorrections.removeValue(
+            forKey: Self.localDeletionKey(
+                messageID: original.id,
+                conversationID: original.conversationID
+            ))
         updateConversationPreview(for: messages[index], incrementUnread: false)
     }
 
@@ -2255,10 +2363,13 @@ final class AppModel: ObservableObject {
         _ message: ChatMessage,
         incrementUnread unreadOverride: Bool? = nil
     ) -> Bool {
-        guard !locallyDeletedMessageIDs.contains(Self.localDeletionKey(
-            messageID: message.id,
-            conversationID: message.conversationID
-        )) else { return false }
+        guard
+            !locallyDeletedMessageIDs.contains(
+                Self.localDeletionKey(
+                    messageID: message.id,
+                    conversationID: message.conversationID
+                ))
+        else { return false }
         upsertConversation(jid: message.conversationID, name: nil)
         if let index = messageIndex(
             id: message.id,
@@ -2294,7 +2405,8 @@ final class AppModel: ObservableObject {
                 merged.reactions = previous.reactions
             }
             if let editedAt = previous.editedAt,
-               message.editedAt == nil || editedAt > message.editedAt! {
+                message.editedAt == nil || editedAt > message.editedAt!
+            {
                 merged.body = previous.body
                 merged.editedAt = editedAt
                 merged.security = previous.security
@@ -2302,30 +2414,34 @@ final class AppModel: ObservableObject {
             }
             messages[index] = merged
             if let stanzaID = merged.stanzaID {
-                messageIndexByStanzaKey[Self.localDeletionKey(
-                    messageID: stanzaID,
-                    conversationID: merged.conversationID
-                )] = index
+                messageIndexByStanzaKey[
+                    Self.localDeletionKey(
+                        messageID: stanzaID,
+                        conversationID: merged.conversationID
+                    )] = index
             }
             updateConversationPreview(for: merged, incrementUnread: false)
             return false
         }
         messages.append(message)
         let insertedIndex = messages.index(before: messages.endIndex)
-        messageIndexByStorageKey[Self.localDeletionKey(
-            messageID: message.id,
-            conversationID: message.conversationID
-        )] = insertedIndex
+        messageIndexByStorageKey[
+            Self.localDeletionKey(
+                messageID: message.id,
+                conversationID: message.conversationID
+            )] = insertedIndex
         if firstMessageIndexByID[message.id] == nil {
             firstMessageIndexByID[message.id] = insertedIndex
         }
         if let stanzaID = message.stanzaID {
-            messageIndexByStanzaKey[Self.localDeletionKey(
-                messageID: stanzaID,
-                conversationID: message.conversationID
-            )] = insertedIndex
+            messageIndexByStanzaKey[
+                Self.localDeletionKey(
+                    messageID: stanzaID,
+                    conversationID: message.conversationID
+                )] = insertedIndex
         }
-        let shouldIncrement = unreadOverride
+        let shouldIncrement =
+            unreadOverride
             ?? (message.direction == .incoming && selectedConversationID != message.conversationID)
         updateConversationPreview(for: message, incrementUnread: shouldIncrement)
         return true
@@ -2333,14 +2449,16 @@ final class AppModel: ObservableObject {
 
     private func updateMessage(id: String, mutation: (inout ChatMessage) -> Void) {
         guard let index = firstMessageIndexByID[id],
-              messages.indices.contains(index),
-              messages[index].id == id else { return }
+            messages.indices.contains(index),
+            messages[index].id == id
+        else { return }
         mutation(&messages[index])
         updateConversationPreview(for: messages[index], incrementUnread: false)
     }
 
     private func updateConversationPreview(for message: ChatMessage, incrementUnread: Bool) {
-        guard let index = conversations.firstIndex(where: { $0.id == message.conversationID }) else { return }
+        guard let index = conversations.firstIndex(where: { $0.id == message.conversationID })
+        else { return }
         if message.timestamp >= conversations[index].lastActivity {
             conversations[index].lastActivity = message.timestamp
             conversations[index].lastMessage = message.previewText
@@ -2354,8 +2472,11 @@ final class AppModel: ObservableObject {
     }
 
     private func rebuildConversationPreview(for conversationID: String) {
-        guard let index = conversations.firstIndex(where: { $0.id == conversationID }) else { return }
-        let latest = messages
+        guard let index = conversations.firstIndex(where: { $0.id == conversationID }) else {
+            return
+        }
+        let latest =
+            messages
             .filter { $0.conversationID == conversationID }
             .max { lhs, rhs in
                 if lhs.timestamp == rhs.timestamp { return lhs.id < rhs.id }
@@ -2374,7 +2495,8 @@ final class AppModel: ObservableObject {
         conversations.sort { lhs, rhs in
             if lhs.isPinned != rhs.isPinned { return lhs.isPinned }
             if lhs.lastActivity != rhs.lastActivity { return lhs.lastActivity > rhs.lastActivity }
-            return lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName) == .orderedAscending
+            return lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName)
+                == .orderedAscending
         }
     }
 
@@ -2386,8 +2508,9 @@ final class AppModel: ObservableObject {
         )
         guard let index = messageIndexByStorageKey[key] else { return nil }
         if messages.indices.contains(index),
-           messages[index].id == id,
-           messages[index].conversationID == normalizedConversationID {
+            messages[index].id == id,
+            messages[index].conversationID == normalizedConversationID
+        {
             return index
         }
         rebuildMessageIndex()
@@ -2404,9 +2527,10 @@ final class AppModel: ObservableObject {
             conversationID: normalizedConversationID
         )
         if let index = messageIndexByStanzaKey[key],
-           messages.indices.contains(index),
-           messages[index].conversationID == normalizedConversationID,
-           messages[index].stanzaID == referenceID {
+            messages.indices.contains(index),
+            messages[index].conversationID == normalizedConversationID,
+            messages[index].stanzaID == referenceID
+        {
             return index
         }
         rebuildMessageIndex()
@@ -2467,10 +2591,11 @@ final class AppModel: ObservableObject {
         lastSuccessfulMAMSync = snapshot.lastSuccessfulMAMSync
         lastSuccessfulMAMCursor = snapshot.lastSuccessfulMAMCursor
         messages = snapshot.messages.filter {
-            !locallyDeletedMessageIDs.contains(Self.localDeletionKey(
-                messageID: $0.id,
-                conversationID: $0.conversationID
-            ))
+            !locallyDeletedMessageIDs.contains(
+                Self.localDeletionKey(
+                    messageID: $0.id,
+                    conversationID: $0.conversationID
+                ))
         }
         rebuildMessageIndex()
         let avatarJIDs = Set(snapshot.conversations.filter { !$0.isGroup }.map(\.jid) + [jid])
@@ -2522,7 +2647,8 @@ final class AppModel: ObservableObject {
     private func loadCachedAvatarIfNeeded(for jid: String) {
         let normalized = jid.lowercased()
         guard avatarDataByJID[normalized] == nil,
-              avatarCacheRequests.insert(normalized).inserted else { return }
+            avatarCacheRequests.insert(normalized).inserted
+        else { return }
         Task { [weak self] in
             guard let self, let data = await self.avatarCache.data(for: normalized) else { return }
             self.avatarDataByJID[normalized] = data
@@ -2536,7 +2662,7 @@ final class AppModel: ObservableObject {
             "LumaForwarding",
             "LumaAttachmentDrafts",
             "LumaPhotoPicker",
-            "LumaDuration"
+            "LumaDuration",
         ] {
             let directory = FileManager.default.temporaryDirectory
                 .appendingPathComponent(directoryName, isDirectory: true)
@@ -2559,10 +2685,11 @@ final class AppModel: ObservableObject {
         for directoryName in ["LumaMediaPreviews", "LumaPreview", "LumaForwarding"] {
             let directory = FileManager.default.temporaryDirectory
                 .appendingPathComponent(directoryName, isDirectory: true)
-            let urls = (try? FileManager.default.contentsOfDirectory(
-                at: directory,
-                includingPropertiesForKeys: nil
-            )) ?? []
+            let urls =
+                (try? FileManager.default.contentsOfDirectory(
+                    at: directory,
+                    includingPropertiesForKeys: nil
+                )) ?? []
             for url in urls where url.lastPathComponent.hasPrefix(prefix) {
                 if previewURL == url { previewURL = nil }
                 try? FileManager.default.removeItem(at: url)
@@ -2596,7 +2723,8 @@ final class AppModel: ObservableObject {
             if let preparedThumbnailData {
                 mediaThumbnailData[messageID] = preparedThumbnailData
             }
-            let hasCompletePreparedPreview = preparedThumbnailData != nil
+            let hasCompletePreparedPreview =
+                preparedThumbnailData != nil
                 && (kind == .photo || kind == .video)
             guard !hasCompletePreparedPreview else { return }
             Task { @MainActor [weak self] in
@@ -2630,10 +2758,11 @@ final class AppModel: ObservableObject {
             audioWaveformSamples[messageID] = waveform
         }
         if let duration = analysis.duration,
-           let index = firstMessageIndexByID[messageID],
-           messages.indices.contains(index),
-           messages[index].id == messageID,
-           messages[index].duration == nil {
+            let index = firstMessageIndexByID[messageID],
+            messages.indices.contains(index),
+            messages[index].id == messageID,
+            messages[index].duration == nil
+        {
             messages[index].duration = duration
             schedulePersist()
         }
@@ -2678,7 +2807,8 @@ final class AppModel: ObservableObject {
 
     private static func isValidJID(_ jid: String) -> Bool {
         let pieces = jid.split(separator: "@", omittingEmptySubsequences: false)
-        return pieces.count == 2 && !pieces[0].isEmpty && !pieces[1].isEmpty && !jid.contains(where: { $0.isWhitespace })
+        return pieces.count == 2 && !pieces[0].isEmpty && !pieces[1].isEmpty
+            && !jid.contains(where: { $0.isWhitespace })
     }
 
     private static func mediaKind(for contentType: UTType?, filename: String) -> ChatMessage.Kind {
