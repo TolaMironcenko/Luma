@@ -49,7 +49,10 @@ final class PhoneWatchBridge: NSObject, WCSessionDelegate {
     private var deliveredVoiceTransferIDs: Set<String> = []
 
     override init() {
-        session = WCSession.isSupported() ? .default : nil
+        session =
+            !RuntimeEnvironment.isRunningTests && WCSession.isSupported()
+            ? .default
+            : nil
         super.init()
         pendingVoiceMessages = Self.loadPersistedVoiceMessages()
         session?.delegate = self
@@ -150,6 +153,7 @@ final class PhoneWatchBridge: NSObject, WCSessionDelegate {
     func sessionDidBecomeInactive(_ session: WCSession) {}
 
     func sessionDidDeactivate(_ session: WCSession) {
+        guard !RuntimeEnvironment.isRunningTests else { return }
         session.activate()
     }
 

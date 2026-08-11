@@ -4,6 +4,14 @@ import Foundation
 import UniformTypeIdentifiers
 import WebRTC
 
+enum RuntimeEnvironment {
+    static var isRunningTests: Bool {
+        let environment = ProcessInfo.processInfo.environment
+        return environment["XCTestConfigurationFilePath"] != nil
+            || environment["XCTestBundlePath"] != nil
+    }
+}
+
 @MainActor
 final class AppModel: ObservableObject {
     @Published private(set) var account: AccountConfiguration?
@@ -186,9 +194,11 @@ final class AppModel: ObservableObject {
             }
         }
 
-        bootstrapTask = Task { [weak self] in
-            guard let self else { return }
-            await self.bootstrap()
+        if !RuntimeEnvironment.isRunningTests {
+            bootstrapTask = Task { [weak self] in
+                guard let self else { return }
+                await self.bootstrap()
+            }
         }
     }
 
@@ -242,6 +252,7 @@ final class AppModel: ObservableObject {
     }
 
     func bootstrap() async {
+        guard !RuntimeEnvironment.isRunningTests else { return }
         guard let saved = preferences.load() else { return }
         account = saved
         globalEncryptionEnabled = preferences.encryptionEnabled(for: saved.normalizedJID)
@@ -376,6 +387,7 @@ final class AppModel: ObservableObject {
     }
 
     func reconnect() async {
+        guard !RuntimeEnvironment.isRunningTests else { return }
         guard let account else { return }
         do {
             guard let password = try credentials.password(for: account.normalizedJID) else {
@@ -390,6 +402,7 @@ final class AppModel: ObservableObject {
 
     func setApplicationActive(_ active: Bool) {
         appIsActive = active
+        guard !RuntimeEnvironment.isRunningTests else { return }
         xmpp.setApplicationActive(active)
         if !active {
             resetTypingState()

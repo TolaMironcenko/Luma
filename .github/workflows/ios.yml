@@ -32,4 +32,12 @@ jobs:
           xcodebuild test \
             -project Luma.xcodeproj \
             -scheme Luma \
-            -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max,OS=26.4.1'
+            -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max,OS=26.4.1' \
+            -resultBundlePath TestResults.xcresult
+
+      - name: Upload Test Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Luma-TestResults
+          path: TestResults.xcresult

@@ -22,19 +22,45 @@ final class CryptoKitAESGCMEngineTests: XCTestCase {
 
     func testModifiedTagFails() {
         let engine = CryptoKitAESGCMEngine()
+
         let key = Data(repeating: 0x31, count: 16)
         let iv = Data(repeating: 0x22, count: 12)
+
         var ciphertext = Data()
         var tag = Data()
-        XCTAssertTrue(
+
+        guard
             engine.encrypt(
-                iv: iv, key: key, message: Data("secret".utf8), output: &ciphertext, tag: &tag))
+                iv: iv,
+                key: key,
+                message: Data("secret".utf8),
+                output: &ciphertext,
+                tag: &tag
+            )
+        else {
+            XCTFail("AES-GCM encryption unexpectedly failed")
+            return
+        }
+
+        XCTAssertEqual(tag.count, 16)
+
+        guard tag.count == 16 else {
+            return
+        }
+
         var modifiedTag = tag
-        modifiedTag[0] ^= 0x01
+        modifiedTag[modifiedTag.startIndex] ^= 0x01
 
         var decrypted = Data()
+
         XCTAssertFalse(
             engine.decrypt(
-                iv: iv, key: key, encoded: ciphertext, auth: modifiedTag, output: &decrypted))
+                iv: iv,
+                key: key,
+                encoded: ciphertext,
+                auth: modifiedTag,
+                output: &decrypted
+            )
+        )
     }
 }
