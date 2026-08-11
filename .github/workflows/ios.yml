@@ -32,5 +32,4 @@ jobs:
           xcodebuild test \
             -project Luma.xcodeproj \
             -scheme Luma \
-            -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max,OS=26.4.1' \
-            -quiet
+            -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max,OS=26.4.1'
