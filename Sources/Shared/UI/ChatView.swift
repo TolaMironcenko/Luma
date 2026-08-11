@@ -442,12 +442,18 @@ struct ChatView: View {
                     }
 #endif
                     .onPreferenceChange(TimelineTopYPreferenceKey.self) { topY in
+                        if topY > 24 {
+                            historyTopTriggerArmed = true
+                            return
+                        }
                         guard hasCompletedInitialScroll,
                               !timelineEntries.isEmpty,
                               model.hasMoreOlderHistory,
                               !model.isLoadingOlderHistory,
-                              topY <= 24
+                              historyTopTriggerArmed
+//                              topY <= 24
                         else { return }
+                        historyTopTriggerArmed = false
                         historyLoadAnchorID = timelineEntries.first?.id
                         model.loadOlderHistoryForSelectedConversation()
                     }

@@ -303,6 +303,9 @@ final class XMPPService {
         let completion: (Result<Bool, Error>) -> Void
     }
     private var pendingOlderHistoryRequest: PendingOlderHistoryRequest?
+    private var olderHistoryQueryID: String?
+    private var olderHistoryTimeoutTask: Task<Void, Never>?
+    private let olderHistoryQueryTimeoutNanoseconds: UInt64 = 15_000_000_000
     private let archiveStanzaInbox = ArchiveStanzaInbox(
         maximumCount: ArchiveMessageBatchPolicy.maximumBufferedStanzas
     )
@@ -870,10 +873,21 @@ final class XMPPService {
         let archive = isGroup
         ? MAMArchiveKey.muc(conversationJID)
         : MAMArchiveKey.account(client.userBareJid.stringValue)
+        // Only one interactive backward-history query is allowed at a time.
+        // This is independent from the normal account/MUC catch-up query.
+        olderHistoryTimeoutTask?.cancel()
+        olderHistoryTimeoutTask = nil
         let queryID = UUID().uuidString
+        olderHistoryQueryID = queryID
         archiveStanzaInbox.begin(
             queryID: queryID,
             allowedSources: allowedMAMSources(for: archive, client: client)
+        )
+        scheduleOlderHistoryTimeout(
+            client: client,
+            queryID: queryID,
+            conversationJID: conversationJID,
+            completion: completion
         )
         
         // Martin 3.2.4's convenience overload accidentally clears `with`.
@@ -897,9 +911,16 @@ final class XMPPService {
         ) { [weak self, weak client] result in
             DispatchQueue.main.async {
                 guard let self, let client else {
-                    completion(.success(false))
+//                    completion(.success(false))
+                    completion(.failure(LumaXMPPError.notConnected))
                     return
                 }
+                guard self.olderHistoryQueryID == queryID else {
+                    return
+                }
+                self.olderHistoryTimeoutTask?.cancel()
+                self.olderHistoryTimeoutTask = nil
+                self.olderHistoryQueryID = nil
                 let page = self.archiveStanzaInbox.take(queryID: queryID)
                 guard !page.overflowed, !page.rejectedSource else {
                     completion(.failure(LumaXMPPError.connection("Некорректная MAM history page")))
@@ -940,9 +961,47 @@ final class XMPPService {
                 case .success(let response):
                     completion(.success(!response.complete))
                 case .failure(let error):
+                    // Do not leave the UI in the loading state. A failed
+                    // interactive query is recoverable by the next scroll.
                     completion(.failure(error))
                 }
             }
+        }
+    }
+    
+    private func scheduleOlderHistoryTimeout(
+        client: XMPPClient,
+        queryID: String,
+        conversationJID: String,
+        completion: @escaping (Result<Bool, Error>) -> Void
+    ) {
+        olderHistoryTimeoutTask?.cancel()
+        olderHistoryTimeoutTask = Task { @MainActor [weak self, weak client] in
+            try? await Task.sleep(nanoseconds: self?.olderHistoryQueryTimeoutNanoseconds ?? 15_000_000_000)
+            guard !Task.isCancelled,
+                  let self,
+                  let client,
+                  self.client === client,
+                  self.olderHistoryQueryID == queryID
+            else {
+                return
+            }
+            
+            self.olderHistoryQueryID = nil
+            self.olderHistoryTimeoutTask = nil
+            self.archiveStanzaInbox.cancel(queryID: queryID)
+            self.eventHandler?(
+                .recoverableError(
+                    "Не удалось загрузить более старую историю чата \(conversationJID): MAM не ответил за 15 секунд."
+                )
+            )
+            completion(
+                .failure(
+                    LumaXMPPError.connection(
+                        "MAM не ответил вовремя. Повторите прокрутку вверх."
+                    )
+                )
+            )
         }
     }
     
@@ -3293,9 +3352,17 @@ final class XMPPService {
 
     private func suspendArchiveSyncForDisconnect() {
         setArchiveSyncIndicator(false)
+        olderHistoryTimeoutTask?.cancel()
+        olderHistoryTimeoutTask = nil
+        olderHistoryQueryID = nil
+        archiveStanzaInbox.cancel()
+        if let pending = pendingOlderHistoryRequest {
+            pendingOlderHistoryRequest = nil
+            pending.completion(.failure(LumaXMPPError.notConnected))
+        }
         guard let client else {
             archiveSyncStarted = false
-            archiveStanzaInbox.cancel()
+//            archiveStanzaInbox.cancel()
             archiveActiveQueryID = nil
             archiveStanzaBuffer.removeAll(keepingCapacity: false)
             archiveBufferOverflowed = false
@@ -3341,6 +3408,9 @@ final class XMPPService {
         archiveQueryCompletionTask?.cancel()
         archiveQueryCompletionTask = nil
         archiveStanzaInbox.cancel()
+        olderHistoryTimeoutTask?.cancel()
+        olderHistoryTimeoutTask = nil
+        olderHistoryQueryID = nil
         archiveResumeAfter = archiveSyncCheckpoint?.cursor
         archiveActiveQueryID = nil
         archiveSyncStarted = false
