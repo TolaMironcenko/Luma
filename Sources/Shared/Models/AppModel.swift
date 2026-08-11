@@ -96,6 +96,7 @@ final class AppModel: ObservableObject {
     private var lastSuccessfulMAMSync: Date?
     private var lastSuccessfulMAMCursor: String?
     private var mamCheckpoints: [MAMArchiveKey: MAMArchiveCheckpoint] = [:]
+    private var hasMoreOlderHistoryByConversation: [String: Bool] = [:]
     private var pendingRoomPasswords: [String: String] = [:]
     private var joiningRoomJIDs: Set<String> = []
     private var mediaSendActivity = MediaSendActivityTracker()
@@ -510,22 +511,31 @@ final class AppModel: ObservableObject {
 //        }
 //        schedulePersist()
 //        syncWatch()
-        hasMoreOlderHistory = true
+//        hasMoreOlderHistory = true
+        hasMoreOlderHistory = hasMoreOlderHistoryByConversation[normalized] ?? true
     }
     
     func loadOlderHistoryForSelectedConversation() {
         guard !isLoadingOlderHistory,
               hasMoreOlderHistory,
               let conversation = selectedConversation else { return }
+//        let oldestServerID = selectedMessages
+//            .sorted { lhs, rhs in
+//                if lhs.timestamp != rhs.timestamp { return lhs.timestamp < rhs.timestamp }
+//                return lhs.id < rhs.id
+//            }
+//            .compactMap(\.stanzaID)
+//            .first
         let oldestServerID = selectedMessages
-            .sorted { lhs, rhs in
+            .filter { $0.stanzaID != nil }
+            .min { lhs, rhs in
                 if lhs.timestamp != rhs.timestamp { return lhs.timestamp < rhs.timestamp }
                 return lhs.id < rhs.id
-            }
-            .compactMap(\.stanzaID)
-            .first
+            }?
+            .stanzaID
         
         isLoadingOlderHistory = true
+        let conversationID = conversation.id.lowercased()
         xmpp.loadOlderHistory(
             conversationJID: conversation.jid,
             isGroup: conversation.isGroup,
@@ -535,7 +545,11 @@ final class AppModel: ObservableObject {
             self.isLoadingOlderHistory = false
             switch result {
             case .success(let hasMore):
-                self.hasMoreOlderHistory = hasMore
+//                self.hasMoreOlderHistory = hasMore
+                self.hasMoreOlderHistoryByConversation[conversationID] = hasMore
+                if self.selectedConversationID == conversationID {
+                    self.hasMoreOlderHistory = hasMore
+                }
             case .failure(let error):
                 self.errorMessage = error.localizedDescription
             }
@@ -1926,6 +1940,9 @@ final class AppModel: ObservableObject {
     }
 
     private func consumeMessage(_ envelope: XMPPService.MessageEnvelope) {
+        if !envelope.isGroupMessage {
+            upsertConversation(jid: envelope.peerJID, name: nil)
+        }
         if let stanzaID = envelope.stanzaID,
             messageIndex(referenceID: stanzaID, conversationID: envelope.peerJID) != nil
         {

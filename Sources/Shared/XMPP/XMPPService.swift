@@ -296,6 +296,13 @@ final class XMPPService {
     private var mucCatchupLastCursor: String?
     private var mucCursorFallbackArchives: Set<MAMArchiveKey> = []
     private var delayedLiveByArchive: [MAMArchiveKey: [BufferedLiveDelivery]] = [:]
+    private struct PendingOlderHistoryRequest {
+        let conversationJID: String
+        let isGroup: Bool
+        let before: String?
+        let completion: (Result<Bool, Error>) -> Void
+    }
+    private var pendingOlderHistoryRequest: PendingOlderHistoryRequest?
     private let archiveStanzaInbox = ArchiveStanzaInbox(
         maximumCount: ArchiveMessageBatchPolicy.maximumBufferedStanzas
     )
@@ -825,12 +832,38 @@ final class XMPPService {
             completion(.failure(LumaXMPPError.notConnected))
             return
         }
-        guard !archiveSyncStarted, activeMUCCatchup == nil else {
-            completion(.success(false))
+        //        guard !archiveSyncStarted, activeMUCCatchup == nil else {
+        //            completion(.success(false))
+        if archiveSyncStarted || activeMUCCatchup != nil {
+            pendingOlderHistoryRequest = PendingOlderHistoryRequest(
+                conversationJID: conversationJID,
+                isGroup: isGroup,
+                before: before,
+                completion: completion
+            )
+            return
+        }
+        performOlderHistoryRequest(
+            conversationJID: conversationJID,
+            isGroup: isGroup,
+            before: before,
+            completion: completion
+        )
+    }
+    
+    private func performOlderHistoryRequest(
+        conversationJID: String,
+        isGroup: Bool,
+        before: String?,
+        completion: @escaping (Result<Bool, Error>) -> Void
+    ) {
+        guard let client, client.state == .connected() else {
+            completion(.failure(LumaXMPPError.notConnected))
             return
         }
         guard let version = client.module(.mam).availableVersions.first else {
-            completion(.success(false))
+//            completion(.success(false))
+            completion(.failure(LumaXMPPError.connection("MAM недоступен")))
             return
         }
         
@@ -893,7 +926,8 @@ final class XMPPService {
                             message: stanza.message,
                             timestamp: stanza.timestamp,
                             archiveID: stanza.archiveID,
-                            isArchived: true
+                            isArchived: true,
+                            archivedPeerJID: isGroup ? nil : BareJID(conversationJID.lowercased())
                         )
                     }
                 }
@@ -910,6 +944,20 @@ final class XMPPService {
                 }
             }
         }
+    }
+    
+    private func startPendingOlderHistoryIfPossible() {
+        guard !archiveSyncStarted,
+              activeMUCCatchup == nil,
+              let pending = pendingOlderHistoryRequest
+        else { return }
+        pendingOlderHistoryRequest = nil
+        performOlderHistoryRequest(
+            conversationJID: pending.conversationJID,
+            isGroup: pending.isGroup,
+            before: pending.before,
+            completion: pending.completion
+        )
     }
 
     func sendRetraction(
@@ -1567,7 +1615,8 @@ final class XMPPService {
         message: Message,
         timestamp: Date,
         archiveID: String?,
-        isArchived: Bool = false
+        isArchived: Bool = false,
+        archivedPeerJID: BareJID? = nil
     ) {
         guard message.type != .error,
             message.type != .groupchat,
@@ -1578,8 +1627,12 @@ final class XMPPService {
         let ownJID = client.userBareJid
         let outgoing = sender == ownJID
         // guard let peer = outgoing ? message.to?.bareJid : message.from?.bareJid else { return }
+//        let peer: BareJID?
+//        if outgoing {
         let peer: BareJID?
-        if outgoing {
+        if isArchived, let archivedPeerJID {
+            peer = archivedPeerJID
+        } else if outgoing {
             peer = message.to?.bareJid ?? message.from?.bareJid
         } else {
             peer = message.from?.bareJid
@@ -2707,6 +2760,7 @@ final class XMPPService {
             mucCatchupLastCursor = nil
             replayDelayedLive(for: archive)
             startNextMUCCatchupIfPossible()
+            startPendingOlderHistoryIfPossible()
         }
         guard succeeded else { return }
         let checkpoint = MAMArchiveCheckpoint(
@@ -3181,6 +3235,7 @@ final class XMPPService {
         }
         setArchiveSyncIndicator(false)
         archiveSyncStarted = false
+        startPendingOlderHistoryIfPossible()
         archiveIsBootstrapQuery = false
         archiveHighWatermark = nil
         archiveHasCompletedPage = false

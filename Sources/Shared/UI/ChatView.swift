@@ -45,6 +45,7 @@ struct ChatView: View {
     @State private var hasCompletedInitialScroll = false
     @State private var isNearTimelineBottom = true
     @State private var historyLoadAnchorID: String?
+    @State private var historyTopTriggerArmed = true
     @State private var activeCaptureMode: ComposerCaptureMode?
     @State private var preparingCaptureMode: ComposerCaptureMode?
     @State private var captureGestureIsActive = false
@@ -239,6 +240,7 @@ struct ChatView: View {
             hasCompletedInitialScroll = false
             isNearTimelineBottom = true
             historyLoadAnchorID = nil
+            historyTopTriggerArmed = true
         }
         .onDisappear {
             model.endComposerActivity(in: liveConversation)
@@ -332,10 +334,30 @@ struct ChatView: View {
                                 Color.clear
                                     .frame(height: 1)
                                     .accessibilityHidden(true)
-                                    .onAppear {
-                                        guard !model.isLoadingOlderHistory else { return }
-                                        historyLoadAnchorID = timelineEntries.first?.id
-                                        model.loadOlderHistoryForSelectedConversation()
+//                                    .onAppear {
+////                                        guard !model.isLoadingOlderHistory else { return }
+//                                        guard historyTopTriggerArmed,
+//                                              !model.isLoadingOlderHistory
+//                                        else {
+//                                            return
+//                                        }
+//                                        
+//                                        historyTopTriggerArmed = false
+//                                        historyLoadAnchorID = timelineEntries.first?.id
+//                                        model.loadOlderHistoryForSelectedConversation()
+//                                    }
+                                    .background {
+                                        GeometryReader { geometry in
+                                            Color.clear.preference(
+                                                key: TimelineTopYPreferenceKey.self,
+                                                value: geometry.frame(
+                                                    in: .named(Self.timelineCoordinateSpace)
+                                                ).minY
+                                            )
+                                        }
+                                    }
+                                    .onDisappear {
+                                        historyTopTriggerArmed = true
                                     }
                                 if model.isLoadingOlderHistory {
                                     ProgressView()
@@ -419,6 +441,16 @@ struct ChatView: View {
                         )
                     }
 #endif
+                    .onPreferenceChange(TimelineTopYPreferenceKey.self) { topY in
+                        guard hasCompletedInitialScroll,
+                              !timelineEntries.isEmpty,
+                              model.hasMoreOlderHistory,
+                              !model.isLoadingOlderHistory,
+                              topY <= 24
+                        else { return }
+                        historyLoadAnchorID = timelineEntries.first?.id
+                        model.loadOlderHistoryForSelectedConversation()
+                    }
                     .task(id: timelineEntries.last?.id) {
                         await performInitialScrollAfterLayout(using: proxy)
                     }
@@ -1570,6 +1602,14 @@ struct ChatView: View {
 
 private struct TimelineBottomYPreferenceKey: PreferenceKey {
     static var defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
+private struct TimelineTopYPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = .greatestFiniteMagnitude
 
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = nextValue()
