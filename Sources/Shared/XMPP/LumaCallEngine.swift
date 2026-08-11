@@ -1631,18 +1631,19 @@ enum CallSDPOrdering {
 }
 
 enum CallSDPNormalization {
-    /// Martin 3.2.4 expects CRLF between lines and unconditionally drops the
-    /// final two characters of its input. Give it one, and only one, trailing
-    /// CRLF so the last character of an SSRC/MSID value is never discarded.
     static func martinParseInput(_ webRTCSDP: String) -> String {
-        var normalized =
+        let lfNormalized =
             webRTCSDP
             .replacingOccurrences(of: "\r\n", with: "\n")
             .replacingOccurrences(of: "\r", with: "\n")
-        while normalized.hasSuffix("\n") {
-            normalized.removeLast()
+
+        var lines = lfNormalized.components(separatedBy: "\n")
+
+        while lines.last?.isEmpty == true {
+            lines.removeLast()
         }
-        return normalized.replacingOccurrences(of: "\n", with: "\r\n") + "\r\n"
+
+        return lines.joined(separator: "\r\n") + "\r\n"
     }
 }
 
