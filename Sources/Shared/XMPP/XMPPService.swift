@@ -1565,7 +1565,7 @@ final class XMPPService {
                 replyToID: reply?.getAttribute("id"),
                 replyToJID: reply?.getAttribute("to"),
                 replyPreview: parsedReply.preview,
-                stanzaID: nil,
+                stanzaID: archiveID,
                 senderDisplayName: nil,
                 isGroupMessage: false,
                 isArchived: isArchived
@@ -1843,37 +1843,38 @@ final class XMPPService {
                 continuation.resume(with: result)
             }
         }
-        
+
         var supportsNonAnonymousRooms = false
-        
+
         if roomConfig.hasField(for: "muc#roomconfig_whois") {
             roomConfig.whois = .anyone
             supportsNonAnonymousRooms = true
         }
-        
+
         if roomConfig.hasField(for: "muc#roomconfig_getmemberlist") {
             let current = roomConfig.getMemberList ?? []
             roomConfig.getMemberList = Array(Set(current + ["moderator", "participant"])).sorted()
         }
-        
+
         if makeMembersOnly, roomConfig.hasField(for: "muc#roomconfig_membersonly") {
             roomConfig.membersOnly = true
         }
-        
+
         if makeMembersOnly, roomConfig.hasField(for: "muc#roomconfig_persistentroom") {
             roomConfig.persistentRoom = true
         }
-        
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+
+        try await withCheckedThrowingContinuation {
+            (continuation: CheckedContinuation<Void, Error>) in
             muc.setRoomConfiguration(roomJid: roomJID, configuration: roomConfig) { result in
                 continuation.resume(with: result)
             }
         }
-        
+
         if supportsNonAnonymousRooms {
             omemoConfiguredRoomJIDs.insert(room.jid.stringValue.lowercased())
         }
-        
+
         return supportsNonAnonymousRooms
     }
 
@@ -2423,12 +2424,28 @@ final class XMPPService {
                 } else {
                     archiveHighWatermark = stanza.timestamp
                 }
-                handle(
-                    message: stanza.message,
-                    timestamp: stanza.timestamp,
-                    archiveID: stanza.archiveID,
-                    isArchived: true
-                )
+                // handle(
+                //     message: stanza.message,
+                //     timestamp: stanza.timestamp,
+                //     archiveID: stanza.archiveID,
+                //     isArchived: true
+                // )
+                if stanza.message.type == .groupchat,
+                    let roomJID = stanza.message.from?.bareJid,
+                    let room = client?.module(.muc).roomManager.room(for: client!, with: roomJID)
+                {
+                    // Some servers include MUC messages in the account MAM.
+                    // Route them through the same group handler instead of
+                    // dropping them in the direct-message handler.
+                    handle(groupMessage: stanza.message, room: room)
+                } else {
+                    handle(
+                        message: stanza.message,
+                        timestamp: stanza.timestamp,
+                        archiveID: stanza.archiveID,
+                        isArchived: true
+                    )
+                }
             }
 
             // Give SwiftUI, UIScrollView and AVFoundation delegate tasks a
@@ -2512,21 +2529,47 @@ final class XMPPService {
                     caughtUp: false
                 )
                 archiveLastCompletedCursor = checkpoint.cursor
+                // if workBudgetReached {
+                //     if checkpoint.advances(over: archiveSyncCheckpoint) {
+                //         finishArchiveSync(
+                //             client: client,
+                //             succeeded: true,
+                //             checkpoint: checkpoint
+                //         )
+                //     } else {
+                //         archivePassMutations.removeAll(keepingCapacity: true)
+                //         eventHandler?(
+                //             .recoverableError(
+                //                 "MAM не продвинул контрольную точку; синхронизация приостановлена."
+                //             ))
+                //         finishArchiveSync(client: client, succeeded: false)
+                //     }
+                // } else {
+                //     scheduleArchiveNextPage(client: client, after: cursor)
+                // }
                 if workBudgetReached {
-                    if checkpoint.advances(over: archiveSyncCheckpoint) {
-                        finishArchiveSync(
-                            client: client,
-                            succeeded: true,
-                            checkpoint: checkpoint
-                        )
-                    } else {
+                    guard checkpoint.advances(over: archiveSyncCheckpoint) else {
                         archivePassMutations.removeAll(keepingCapacity: true)
                         eventHandler?(
                             .recoverableError(
                                 "MAM не продвинул контрольную точку; синхронизация приостановлена."
                             ))
                         finishArchiveSync(client: client, succeeded: false)
+                        return
                     }
+
+                    // The foreground budget is only a UI-yield boundary.  It
+                    // must NOT turn response.complete == false into a completed
+                    // MAM pass, otherwise messages after this cursor are missed
+                    // until a later activation.
+                    if !archivePassMutations.isEmpty {
+                        let mutations = archivePassMutations
+                        archivePassMutations.removeAll(keepingCapacity: true)
+                        eventHandler?(.archiveBatch(mutations))
+                    }
+                    archiveSyncCheckpoint = checkpoint
+                    archiveWorkBudget = ArchiveSyncWorkBudget()
+                    scheduleArchiveNextPage(client: client, after: cursor)
                 } else {
                     scheduleArchiveNextPage(client: client, after: cursor)
                 }
