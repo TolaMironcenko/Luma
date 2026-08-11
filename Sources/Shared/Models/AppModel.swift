@@ -42,6 +42,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var isOMEMOReady = false
     @Published private(set) var ownFingerprint: String?
     @Published private(set) var isArchiveSyncing = false
+    @Published private(set) var isLoadingOlderHistory = false
+    @Published private(set) var hasMoreOlderHistory = true
     @Published private(set) var isAuthenticating = false
     @Published private(set) var isSendingAttachment = false
     @Published private(set) var isUpdatingAvatar = false
@@ -93,6 +95,7 @@ final class AppModel: ObservableObject {
     private var locallyDeletedMessageIDs: Set<String> = []
     private var lastSuccessfulMAMSync: Date?
     private var lastSuccessfulMAMCursor: String?
+    private var mamCheckpoints: [MAMArchiveKey: MAMArchiveCheckpoint] = [:]
     private var pendingRoomPasswords: [String: String] = [:]
     private var joiningRoomJIDs: Set<String> = []
     private var mediaSendActivity = MediaSendActivityTracker()
@@ -286,7 +289,8 @@ final class AppModel: ObservableObject {
             try await xmpp.connect(
                 account: saved,
                 password: password,
-                archiveCheckpoint: durableArchiveSyncCheckpoint
+                archiveCheckpoint: durableArchiveSyncCheckpoint,
+                mamCheckpoints: mamCheckpoints
             )
             await notifications.requestAuthorization()
         } catch {
@@ -324,7 +328,8 @@ final class AppModel: ObservableObject {
             try await xmpp.connect(
                 account: account,
                 password: password,
-                archiveCheckpoint: durableArchiveSyncCheckpoint
+                archiveCheckpoint: durableArchiveSyncCheckpoint,
+                mamCheckpoints: mamCheckpoints
             )
             try credentials.save(password: password, for: account.normalizedJID)
             try preferences.save(account)
@@ -500,11 +505,41 @@ final class AppModel: ObservableObject {
     func selectConversation(id: String) {
         let normalized = id.lowercased()
         selectedConversationID = normalized
-        if let index = conversations.firstIndex(where: { $0.id == normalized }) {
-            conversations[index].unreadCount = 0
+//        if let index = conversations.firstIndex(where: { $0.id == normalized }) {
+//            conversations[index].unreadCount = 0
+//        }
+//        schedulePersist()
+//        syncWatch()
+        hasMoreOlderHistory = true
+    }
+    
+    func loadOlderHistoryForSelectedConversation() {
+        guard !isLoadingOlderHistory,
+              hasMoreOlderHistory,
+              let conversation = selectedConversation else { return }
+        let oldestServerID = selectedMessages
+            .sorted { lhs, rhs in
+                if lhs.timestamp != rhs.timestamp { return lhs.timestamp < rhs.timestamp }
+                return lhs.id < rhs.id
+            }
+            .compactMap(\.stanzaID)
+            .first
+        
+        isLoadingOlderHistory = true
+        xmpp.loadOlderHistory(
+            conversationJID: conversation.jid,
+            isGroup: conversation.isGroup,
+            before: oldestServerID
+        ) { [weak self] result in
+            guard let self else { return }
+            self.isLoadingOlderHistory = false
+            switch result {
+            case .success(let hasMore):
+                self.hasMoreOlderHistory = hasMore
+            case .failure(let error):
+                self.errorMessage = error.localizedDescription
+            }
         }
-        schedulePersist()
-        syncWatch()
     }
 
     func createOrJoinGroup(
@@ -1806,6 +1841,12 @@ final class AppModel: ObservableObject {
         case .archiveSyncCompleted(let checkpoint):
             lastSuccessfulMAMSync = checkpoint.timestamp
             lastSuccessfulMAMCursor = checkpoint.cursor
+            if let account {
+                mamCheckpoints[.account(account.normalizedJID)] = MAMArchiveCheckpoint(
+                    timestamp: checkpoint.timestamp,
+                    cursor: checkpoint.cursor
+                )
+            }
             // Синхронно форсируем persist, чтобы checkpoint не потерялся
             persistTask?.cancel()
             persistTask = nil
@@ -1817,10 +1858,14 @@ final class AppModel: ObservableObject {
                     locallyDeletedMessageIDs: self.locallyDeletedMessageIDs,
                     rosterContactJIDs: self.rosterContactJIDs,
                     lastSuccessfulMAMSync: self.lastSuccessfulMAMSync,
-                    lastSuccessfulMAMCursor: self.lastSuccessfulMAMCursor
+                    lastSuccessfulMAMCursor: self.lastSuccessfulMAMCursor,
+                    mamCheckpoints: self.mamCheckpoints
                 )
                 try? await archive.save(snapshot)
             }
+        case .mucArchiveSyncCompleted(let archiveKey, let checkpoint):
+            mamCheckpoints[archiveKey] = checkpoint
+            schedulePersist()
         case .call(let call):
             activeCall = call
         case .callHistory(let entry):
@@ -1886,6 +1931,13 @@ final class AppModel: ObservableObject {
         {
             return  // уже есть это сообщение
         }
+        if let originID = envelope.originID,
+           messages.contains(where: {
+               $0.conversationID == envelope.peerJID.lowercased() && $0.originID == originID
+           }) {
+            mergeServerIdentity(from: envelope, matchingOriginID: originID)
+            return
+        }
         if envelope.isGroupMessage {
             upsertGroupConversation(
                 jid: envelope.peerJID,
@@ -1933,6 +1985,7 @@ final class AppModel: ObservableObject {
             replyToID: envelope.replyToID,
             replyToJID: envelope.replyToJID,
             replyPreview: envelope.replyPreview,
+            originID: envelope.originID,
             stanzaID: envelope.stanzaID,
             senderDisplayName: envelope.senderDisplayName,
             isGroupMessage: envelope.isGroupMessage
@@ -1973,6 +2026,23 @@ final class AppModel: ObservableObject {
                 conversationID: envelope.peerJID
             )
         }
+    }
+    
+    private func mergeServerIdentity(
+        from envelope: XMPPService.MessageEnvelope,
+        matchingOriginID originID: String
+    ) {
+        guard let index = messages.firstIndex(where: {
+            $0.conversationID == envelope.peerJID.lowercased() && $0.originID == originID
+        }) else { return }
+        if messages[index].stanzaID == nil {
+            messages[index].stanzaID = envelope.stanzaID
+        }
+        if messages[index].delivery == .sending {
+            messages[index].delivery = .sent
+        }
+        rebuildMessageIndex()
+        schedulePersist()
     }
 
     private func recordCallHistory(_ entry: CallHistoryEntry) {
@@ -2603,6 +2673,13 @@ final class AppModel: ObservableObject {
         locallyDeletedMessageIDs = snapshot.locallyDeletedMessageIDs
         lastSuccessfulMAMSync = snapshot.lastSuccessfulMAMSync
         lastSuccessfulMAMCursor = snapshot.lastSuccessfulMAMCursor
+        mamCheckpoints = snapshot.mamCheckpoints
+        if mamCheckpoints.isEmpty, let lastSuccessfulMAMSync {
+            mamCheckpoints[.account(jid)] = MAMArchiveCheckpoint(
+                timestamp: lastSuccessfulMAMSync,
+                cursor: lastSuccessfulMAMCursor
+            )
+        }
         messages = snapshot.messages.filter {
             !locallyDeletedMessageIDs.contains(
                 Self.localDeletionKey(
@@ -2633,7 +2710,8 @@ final class AppModel: ObservableObject {
                 locallyDeletedMessageIDs: self.locallyDeletedMessageIDs,
                 rosterContactJIDs: self.rosterContactJIDs,
                 lastSuccessfulMAMSync: self.lastSuccessfulMAMSync,
-                lastSuccessfulMAMCursor: self.lastSuccessfulMAMCursor
+                lastSuccessfulMAMCursor: self.lastSuccessfulMAMCursor,
+                mamCheckpoints: self.mamCheckpoints
             )
             try? await archive.save(snapshot)
         }

@@ -44,6 +44,7 @@ struct ChatView: View {
     @State private var replyThreadSelection: ReplyThreadSelection?
     @State private var hasCompletedInitialScroll = false
     @State private var isNearTimelineBottom = true
+    @State private var historyLoadAnchorID: String?
     @State private var activeCaptureMode: ComposerCaptureMode?
     @State private var preparingCaptureMode: ComposerCaptureMode?
     @State private var captureGestureIsActive = false
@@ -237,6 +238,7 @@ struct ChatView: View {
         .onChange(of: conversation.id) { _, _ in
             hasCompletedInitialScroll = false
             isNearTimelineBottom = true
+            historyLoadAnchorID = nil
         }
         .onDisappear {
             model.endComposerActivity(in: liveConversation)
@@ -324,6 +326,23 @@ struct ChatView: View {
                 ZStack(alignment: .bottomTrailing) {
                     ScrollView {
                         LazyVStack(spacing: 5) {
+                            if hasCompletedInitialScroll,
+                               model.hasMoreOlderHistory,
+                               !timelineEntries.isEmpty {
+                                Color.clear
+                                    .frame(height: 1)
+                                    .accessibilityHidden(true)
+                                    .onAppear {
+                                        guard !model.isLoadingOlderHistory else { return }
+                                        historyLoadAnchorID = timelineEntries.first?.id
+                                        model.loadOlderHistoryForSelectedConversation()
+                                    }
+                                if model.isLoadingOlderHistory {
+                                    ProgressView()
+                                        .controlSize(.small)
+                                        .padding(.vertical, 6)
+                                }
+                            }
                             if timelineEntries.isEmpty {
                                 ContentUnavailableView(
                                     emptyChatTitle,
@@ -412,6 +431,15 @@ struct ChatView: View {
                             return
                         }
                         scrollToBottom(proxy, animated: true)
+                    }
+                    .onChange(of: model.isLoadingOlderHistory) { wasLoading, isLoading in
+                        guard wasLoading, !isLoading,
+                              let anchor = historyLoadAnchorID else { return }
+                        Task { @MainActor in
+                            await Task.yield()
+                            proxy.scrollTo(anchor, anchor: .top)
+                            historyLoadAnchorID = nil
+                        }
                     }
                     .onChange(of: timelineEntries.count) { _, _ in
                         selectedMessageIDs.formIntersection(

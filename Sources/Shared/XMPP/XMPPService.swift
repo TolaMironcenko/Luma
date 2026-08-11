@@ -17,19 +17,32 @@ private struct BufferedArchivePage {
     let rejectedSource: Bool
 }
 
+private enum BufferedLiveDelivery {
+    case direct(message: Message, timestamp: Date)
+    case group(message: Message, room: RoomProtocol)
+}
+
 /// Martin publishes every MAM result synchronously on its parser queue. Keep
 /// that burst off the main queue and hand the completed page to XMPPService
 /// only after the final IQ callback. Message instances are immutable after the
 /// publisher returns; the lock provides the ownership hand-off.
 private final class ArchiveStanzaInbox: @unchecked Sendable {
+    private struct State {
+        let allowedSources: Set<String>
+        var stanzas: [BufferedArchiveStanza] = []
+        var overflowed = false
+        var rejectedSource = false
+    }
+    
     private let lock = NSLock()
     private let maximumCount: Int
-    private var activeQueryID: String?
-    private var allowedSources: Set<String> = []
-    private var stanzas: [BufferedArchiveStanza] = []
-    private var overflowed = false
-    private var rejectedSource = false
-
+//    private var activeQueryID: String?
+//    private var allowedSources: Set<String> = []
+//    private var stanzas: [BufferedArchiveStanza] = []
+//    private var overflowed = false
+//    private var rejectedSource = false
+    private var states: [String: State] = [:]
+    
     init(maximumCount: Int) {
         self.maximumCount = maximumCount
     }
@@ -37,11 +50,14 @@ private final class ArchiveStanzaInbox: @unchecked Sendable {
     func begin(queryID: String, allowedSources: Set<String>) {
         lock.lock()
         defer { lock.unlock() }
-        activeQueryID = queryID
-        self.allowedSources = Set(allowedSources.map { $0.lowercased() })
-        stanzas.removeAll(keepingCapacity: true)
-        overflowed = false
-        rejectedSource = false
+//        activeQueryID = queryID
+//        self.allowedSources = Set(allowedSources.map { $0.lowercased() })
+//        stanzas.removeAll(keepingCapacity: true)
+//        overflowed = false
+//        rejectedSource = false
+        states[queryID] = State(
+            allowedSources: Set(allowedSources.map { $0.lowercased() })
+        )
     }
 
     func append(
@@ -53,53 +69,73 @@ private final class ArchiveStanzaInbox: @unchecked Sendable {
     ) {
         lock.lock()
         defer { lock.unlock() }
-        guard activeQueryID == queryID else { return }
-        guard allowedSources.contains(source.stringValue.lowercased()) else {
-            rejectedSource = true
+//        guard activeQueryID == queryID else { return }
+//        guard allowedSources.contains(source.stringValue.lowercased()) else {
+//            rejectedSource = true
+        guard var state = states[queryID] else { return }
+        guard state.allowedSources.contains(source.stringValue.lowercased()) else {
+            state.rejectedSource = true
+            states[queryID] = state
             return
         }
-        guard stanzas.count < maximumCount else {
-            overflowed = true
+//        guard stanzas.count < maximumCount else {
+//            overflowed = true
+        guard state.stanzas.count < maximumCount else {
+            state.overflowed = true
+            states[queryID] = state
             return
         }
-        stanzas.append(
+//        stanzas.append(
+        state.stanzas.append(
             BufferedArchiveStanza(
                 queryID: queryID,
                 message: message,
                 timestamp: timestamp,
                 archiveID: archiveID
             ))
-        print("MAM source: \(source), allowed: \(allowedSources)")
+//        print("MAM source: \(source), allowed: \(allowedSources)")
+        states[queryID] = state
     }
 
     func take(queryID: String) -> BufferedArchivePage {
         lock.lock()
         defer { lock.unlock() }
-        guard activeQueryID == queryID else {
+//        guard activeQueryID == queryID else {
+        guard let state = states.removeValue(forKey: queryID) else {
             return BufferedArchivePage(stanzas: [], overflowed: false, rejectedSource: false)
         }
-        let page = BufferedArchivePage(
-            stanzas: stanzas,
-            overflowed: overflowed,
-            rejectedSource: rejectedSource
+//        let page = BufferedArchivePage(
+//            stanzas: stanzas,
+//            overflowed: overflowed,
+//            rejectedSource: rejectedSource
+//        )
+//        activeQueryID = nil
+//        allowedSources.removeAll(keepingCapacity: true)
+//        stanzas.removeAll(keepingCapacity: true)
+//        overflowed = false
+//        rejectedSource = false
+//        return page
+        return BufferedArchivePage(
+            stanzas: state.stanzas,
+            overflowed: state.overflowed,
+            rejectedSource: state.rejectedSource
         )
-        activeQueryID = nil
-        allowedSources.removeAll(keepingCapacity: true)
-        stanzas.removeAll(keepingCapacity: true)
-        overflowed = false
-        rejectedSource = false
-        return page
     }
 
     func cancel(queryID: String? = nil) {
         lock.lock()
         defer { lock.unlock() }
-        if let queryID, activeQueryID != queryID { return }
-        activeQueryID = nil
-        allowedSources.removeAll(keepingCapacity: true)
-        stanzas.removeAll(keepingCapacity: true)
-        overflowed = false
-        rejectedSource = false
+//        if let queryID, activeQueryID != queryID { return }
+//        activeQueryID = nil
+//        allowedSources.removeAll(keepingCapacity: true)
+//        stanzas.removeAll(keepingCapacity: true)
+//        overflowed = false
+//        rejectedSource = false
+        if let queryID {
+            states.removeValue(forKey: queryID)
+        } else {
+            states.removeAll(keepingCapacity: true)
+        }
     }
 }
 
@@ -130,6 +166,7 @@ final class XMPPService {
         let replyToID: String?
         let replyToJID: String?
         let replyPreview: String?
+        let originID: String?
         let stanzaID: String?
         let senderDisplayName: String?
         let isGroupMessage: Bool
@@ -214,6 +251,7 @@ final class XMPPService {
         case archiveBatch([ArchiveMutation])
         case archiveSyncing(Bool)
         case archiveSyncCompleted(ArchiveSyncCheckpoint)
+        case mucArchiveSyncCompleted(archive: MAMArchiveKey, checkpoint: MAMArchiveCheckpoint)
         case call(CallSnapshot?)
         case callHistory(CallHistoryEntry)
         case callError(String)
@@ -251,6 +289,13 @@ final class XMPPService {
     private var archiveStanzaBuffer: [BufferedArchiveStanza] = []
     private var archiveBufferOverflowed = false
     private var archiveRejectedSource = false
+    private var mamCheckpoints: [MAMArchiveKey: MAMArchiveCheckpoint] = [:]
+    private var pendingMUCCatchups: [MAMArchiveKey] = []
+    private var activeMUCCatchup: MAMArchiveKey?
+    private var mucCatchupHighWatermark: Date?
+    private var mucCatchupLastCursor: String?
+    private var mucCursorFallbackArchives: Set<MAMArchiveKey> = []
+    private var delayedLiveByArchive: [MAMArchiveKey: [BufferedLiveDelivery]] = [:]
     private let archiveStanzaInbox = ArchiveStanzaInbox(
         maximumCount: ArchiveMessageBatchPolicy.maximumBufferedStanzas
     )
@@ -301,13 +346,15 @@ final class XMPPService {
     func connect(
         account: AccountConfiguration,
         password: String,
-        archiveCheckpoint: ArchiveSyncCheckpoint? = nil
+        archiveCheckpoint: ArchiveSyncCheckpoint? = nil,
+        mamCheckpoints: [MAMArchiveKey: MAMArchiveCheckpoint] = [:]
     ) async throws {
         await disconnect()
         cancellables.removeAll()
         archiveSyncStarted = false
         archiveSyncCompletedForConnection = false
         archiveSyncCheckpoint = archiveCheckpoint
+        self.mamCheckpoints = mamCheckpoints
         archiveSyncQueryStartedAt = nil
         archivePagination = ArchiveSyncPagination()
         archiveRetryTask?.cancel()
@@ -330,6 +377,11 @@ final class XMPPService {
         archiveBufferOverflowed = false
         archiveRejectedSource = false
         archiveStanzaInbox.cancel()
+        pendingMUCCatchups.removeAll()
+        activeMUCCatchup = nil
+        mucCursorFallbackArchives.removeAll()
+        mucCatchupHighWatermark = nil
+        mucCatchupLastCursor = nil
         setArchiveSyncIndicator(false)
         avatarRequests.removeAll()
         observedRoomJIDs.removeAll()
@@ -577,6 +629,8 @@ final class XMPPService {
             room = joinedRoom
         }
         observe(room: room)
+        enqueueMUCCatchup(roomJID: room.jid)
+        
         eventHandler?(
             .roomState(
                 RoomStateEnvelope(
@@ -700,6 +754,7 @@ final class XMPPService {
                 throw LumaXMPPError.roomNotJoined
             }
             let message = room.createMessage(text: wireBody, id: messageID)
+            addOriginID(messageID, to: message)
             message.lastMessageCorrectionId = replacingMessageID
             if chatStatesEnabled { message.chatState = .active }
             addReply(replyTo, fallback: replyFallback, to: message)
@@ -736,6 +791,7 @@ final class XMPPService {
         }
 
         let message = chat.createMessage(text: wireBody, id: messageID)
+        addOriginID(messageID, to: message)
         message.lastMessageCorrectionId = replacingMessageID
         if chatStatesEnabled { message.chatState = .active }
         addReply(replyTo, fallback: replyFallback, to: message)
@@ -752,6 +808,107 @@ final class XMPPService {
         } else {
             try await chat.send(message: message)
             return nil
+        }
+    }
+    
+    /// Loads one older MAM page for a single conversation. `before` is the
+    /// oldest server/MAM id currently known by the UI. For direct chats the
+    /// query is scoped with XEP-0313 `with`; for MUC the IQ is addressed to the
+    /// room archive itself.
+    func loadOlderHistory(
+        conversationJID: String,
+        isGroup: Bool,
+        before: String?,
+        completion: @escaping (Result<Bool, Error>) -> Void
+    ) {
+        guard let client, client.state == .connected() else {
+            completion(.failure(LumaXMPPError.notConnected))
+            return
+        }
+        guard !archiveSyncStarted, activeMUCCatchup == nil else {
+            completion(.success(false))
+            return
+        }
+        guard let version = client.module(.mam).availableVersions.first else {
+            completion(.success(false))
+            return
+        }
+        
+        let archive = isGroup
+        ? MAMArchiveKey.muc(conversationJID)
+        : MAMArchiveKey.account(client.userBareJid.stringValue)
+        let queryID = UUID().uuidString
+        archiveStanzaInbox.begin(
+            queryID: queryID,
+            allowedSources: allowedMAMSources(for: archive, client: client)
+        )
+        
+        // Martin 3.2.4's convenience overload accidentally clears `with`.
+        // Construct MAMQueryForm explicitly so direct-chat history is truly
+        // scoped to this peer.
+        let form = MAMQueryForm(version: version)
+        if !isGroup {
+            form.with = JID(conversationJID.lowercased())
+        }
+        let componentJID: JID? = isGroup ? JID(conversationJID.lowercased()) : nil
+        let rsm: RSM.Query = before.map {
+            RSM.Query(before: $0, max: archivePageSize)
+        } ?? RSM.Query(lastItems: archivePageSize)
+        
+        client.module(.mam).queryItems(
+            version: version,
+            componentJid: componentJID,
+            query: form,
+            queryId: queryID,
+            rsm: rsm
+        ) { [weak self, weak client] result in
+            DispatchQueue.main.async {
+                guard let self, let client else {
+                    completion(.success(false))
+                    return
+                }
+                let page = self.archiveStanzaInbox.take(queryID: queryID)
+                guard !page.overflowed, !page.rejectedSource else {
+                    completion(.failure(LumaXMPPError.connection("Некорректная MAM history page")))
+                    return
+                }
+                
+                // History is only allowed while catch-up is idle, so the
+                // legacy mutation accumulator can safely be used as a local
+                // page collector here.
+                let savedMutations = self.archivePassMutations
+                self.archivePassMutations = []
+                for stanza in page.stanzas {
+                    if stanza.message.type == .groupchat,
+                       let roomJID = stanza.message.from?.bareJid {
+                        self.handle(
+                            groupMessage: stanza.message,
+                            archivedRoomJID: roomJID,
+                            archivedTimestamp: stanza.timestamp,
+                            archiveID: stanza.archiveID,
+                            isArchived: true
+                        )
+                    } else {
+                        self.handle(
+                            message: stanza.message,
+                            timestamp: stanza.timestamp,
+                            archiveID: stanza.archiveID,
+                            isArchived: true
+                        )
+                    }
+                }
+                let historyMutations = self.archivePassMutations
+                self.archivePassMutations = savedMutations
+                if !historyMutations.isEmpty {
+                    self.eventHandler?(.archiveBatch(historyMutations))
+                }
+                switch result {
+                case .success(let response):
+                    completion(.success(!response.complete))
+                case .failure(let error):
+                    completion(.failure(error))
+                }
+            }
         }
     }
 
@@ -1271,14 +1428,16 @@ final class XMPPService {
         client.module(.message).messagesPublisher
             .receive(on: DispatchQueue.main)
             .sink { [weak self] incoming in
-                self?.handle(message: incoming.message, timestamp: Date(), archiveID: nil)
+//                self?.handle(message: incoming.message, timestamp: Date(), archiveID: nil)
+                self?.deliverOrDelayDirect(incoming.message, timestamp: Date())
             }
             .store(in: &cancellables)
 
         client.module(.muc).messagesPublisher
             .receive(on: DispatchQueue.main)
             .sink { [weak self] incoming in
-                self?.handle(groupMessage: incoming.message, room: incoming.room)
+//                self?.handle(groupMessage: incoming.message, room: incoming.room)
+                self?.deliverOrDelayGroup(incoming.message, room: incoming.room)
             }
             .store(in: &cancellables)
 
@@ -1299,7 +1458,8 @@ final class XMPPService {
         client.module(.messageCarbons).carbonsPublisher
             .receive(on: DispatchQueue.main)
             .sink { [weak self] carbon in
-                self?.handle(message: carbon.message, timestamp: Date(), archiveID: nil)
+//                self?.handle(message: carbon.message, timestamp: Date(), archiveID: nil)
+                self?.deliverOrDelayDirect(carbon.message, timestamp: Date())
             }
             .store(in: &cancellables)
 
@@ -1353,6 +1513,41 @@ final class XMPPService {
                     .omemo(ready: ready, ownFingerprint: omemoStorage.ownFingerprint))
             }
             .store(in: &cancellables)
+    }
+    
+    private func deliverOrDelayDirect(_ message: Message, timestamp: Date) {
+        guard let client else { return }
+        let archive = MAMArchiveKey.account(client.userBareJid.stringValue)
+        if archiveSyncStarted {
+            delayedLiveByArchive[archive, default: []].append(
+                .direct(message: message, timestamp: timestamp)
+            )
+            return
+        }
+        handle(message: message, timestamp: timestamp, archiveID: nil)
+    }
+    
+    private func deliverOrDelayGroup(_ message: Message, room: RoomProtocol) {
+        let archive = MAMArchiveKey.muc(room.jid.stringValue)
+        if activeMUCCatchup == archive {
+            delayedLiveByArchive[archive, default: []].append(
+                .group(message: message, room: room)
+            )
+            return
+        }
+        handle(groupMessage: message, room: room)
+    }
+    
+    private func replayDelayedLive(for archive: MAMArchiveKey) {
+        let delayed = delayedLiveByArchive.removeValue(forKey: archive) ?? []
+        for item in delayed {
+            switch item {
+            case .direct(let message, let timestamp):
+                handle(message: message, timestamp: timestamp, archiveID: nil)
+            case .group(let message, let room):
+                handle(groupMessage: message, room: room)
+            }
+        }
     }
 
     private func handle(state: XMPPClient.State) {
@@ -1565,6 +1760,7 @@ final class XMPPService {
                 replyToID: reply?.getAttribute("id"),
                 replyToJID: reply?.getAttribute("to"),
                 replyPreview: parsedReply.preview,
+                originID: message.originId,
                 stanzaID: archiveID,
                 senderDisplayName: nil,
                 isGroupMessage: false,
@@ -1572,19 +1768,33 @@ final class XMPPService {
             ), isArchived: isArchived)
     }
 
-    private func handle(groupMessage message: Message, room: RoomProtocol) {
+    private func handle(
+        groupMessage message: Message,
+        room: RoomProtocol? = nil,
+        archivedRoomJID: BareJID? = nil,
+        archivedTimestamp: Date? = nil,
+        archiveID: String? = nil,
+        isArchived: Bool = false
+    ) {
         guard message.type != .error,
             let client,
-            let from = message.from
+            let from = message.from,
+            let roomBareJID = room?.jid ?? archivedRoomJID ?? message.from?.bareJid
         else { return }
 
         let nickname = from.resource ?? "Участник"
-        let outgoing = nickname == room.nickname
-        let roomJID = room.jid.stringValue.lowercased()
+//        let outgoing = nickname == room.nickname
+//        let roomJID = room.jid.stringValue.lowercased()
+        let disclosedSender = Self.originalSenderJID(in: message)
+        ?? XMucUserElement.extract(from: message)?.jid?.bareJid
+        let outgoing = room.map { nickname == $0.nickname }
+        ?? (disclosedSender == client.userBareJid)
+        let roomJID = roomBareJID.stringValue.lowercased()
         // In a MUC the author address used by XEP-0461 is the full occupant
         // JID (room@service/nickname), not the participant's disclosed real JID.
         let senderJID = from.stringValue
-        let stanzaID = Self.roomStanzaID(in: message, roomJID: room.jid)
+//        let stanzaID = Self.roomStanzaID(in: message, roomJID: room.jid)
+        let stanzaID = Self.roomStanzaID(in: message, roomJID: roomBareJID) ?? archiveID
         let id =
             outgoing
             ? (message.originId ?? message.id ?? stanzaID ?? UUID().uuidString)
@@ -1600,7 +1810,8 @@ final class XMPPService {
         } else if let disclosed = XMucUserElement.extract(from: message)?.jid?.bareJid {
             realSender = disclosed
             roomRealJIDByNickname[roomJID, default: [:]][nickname] = disclosed
-        } else if let disclosed = room.occupant(nickname: nickname)?.jid?.bareJid {
+            //        } else if let disclosed = room.occupant(nickname: nickname)?.jid?.bareJid {
+        } else if let disclosed = room?.occupant(nickname: nickname)?.jid?.bareJid {
             realSender = disclosed
             roomRealJIDByNickname[roomJID, default: [:]][nickname] = disclosed
         } else {
@@ -1662,7 +1873,8 @@ final class XMPPService {
         }
 
         let payload = contentMessage ?? message
-        if let state = Self.chatTypingState(payload.chatState ?? message.chatState) {
+//        if let state = Self.chatTypingState(payload.chatState ?? message.chatState) {
+        if !isArchived, let state = Self.chatTypingState(payload.chatState ?? message.chatState) {
             knownChatStatePeers.insert(roomJID)
             if !outgoing {
                 eventHandler?(
@@ -1695,11 +1907,13 @@ final class XMPPService {
                         guard child.name == "reaction" else { return nil }
                         return child.value
                     },
-                    timestamp: message.delay?.stamp ?? Date(),
+//                    timestamp: message.delay?.stamp ?? Date(),
+                    timestamp: archivedTimestamp ?? message.delay?.stamp ?? Date(),
                     isOutgoing: outgoing,
                     isGroupMessage: true
                 ),
-                isArchived: false
+//                isArchived: false
+                isArchived: isArchived
             )
             return
         }
@@ -1751,14 +1965,17 @@ final class XMPPService {
             attachmentURL == nil
             ? visibleBody
             : Self.displayBody(kind: kind, filename: transportFilename ?? "Вложение")
-        eventHandler?(
-            .message(
+//        eventHandler?(
+        emitMessage(
+//            .message(
                 MessageEnvelope(
                     id: id,
-                    peerJID: room.jid.stringValue,
+//                    peerJID: room.jid.stringValue,
+                    peerJID: roomBareJID.stringValue,
                     senderJID: senderJID,
                     body: displayBody,
-                    timestamp: message.delay?.stamp ?? Date(),
+//                    timestamp: message.delay?.stamp ?? Date(),
+                    timestamp: archivedTimestamp ?? message.delay?.stamp ?? Date(),
                     isOutgoing: outgoing,
                     security: security,
                     kind: kind,
@@ -1773,11 +1990,14 @@ final class XMPPService {
                     replyToID: reply?.getAttribute("id"),
                     replyToJID: reply?.getAttribute("to"),
                     replyPreview: parsedReply.preview,
+                    originID: message.originId,
                     stanzaID: stanzaID,
                     senderDisplayName: nickname,
                     isGroupMessage: true,
-                    isArchived: false
-                )))
+                    //                    isArchived: false
+                    //                )))
+                    isArchived: isArchived
+                ), isArchived: isArchived)
     }
 
     private func observe(room: RoomProtocol) {
@@ -2008,6 +2228,13 @@ final class XMPPService {
         bodyRange.setAttribute("end", value: String(replyFallback.scalarCount))
         fallback.addChild(bodyRange)
         message.addChild(fallback)
+    }
+    
+    private func addOriginID(_ id: String, to message: Message) {
+        guard message.originId == nil else { return }
+        let origin = Element(name: "origin-id", xmlns: Self.stanzaIDNamespace)
+        origin.setAttribute("id", value: id)
+        message.addChild(origin)
     }
 
     private static func roomStanzaID(in message: Message, roomJID: BareJID) -> String? {
@@ -2255,6 +2482,48 @@ final class XMPPService {
         }
         return encryptedMessage
     }
+    
+    /// Single Martin-specific MAM entry point. Martin 3.2.4 supports
+    /// `componentJid:` and writes it to IQ `to`, which is required for MUC MAM.
+    private func queryMAM(
+        client: XMPPClient,
+        archive: MAMArchiveKey,
+        start: Date?,
+        queryID: String,
+        rsm: RSM.Query?,
+        completion: @escaping (Result<MessageArchiveManagementModule.QueryResult, XMPPError>) -> Void
+    ) {
+        let componentJID: JID?
+        switch archive.kind {
+        case .account:
+            componentJID = nil
+        case .muc:
+            componentJID = JID(archive.jid)
+        }
+        
+        client.module(.mam).queryItems(
+            componentJid: componentJID,
+            start: start,
+            queryId: queryID,
+            rsm: rsm,
+            completionHandler: completion
+        )
+    }
+    
+    private func allowedMAMSources(
+        for archive: MAMArchiveKey,
+        client: XMPPClient
+    ) -> Set<String> {
+        switch archive.kind {
+        case .account:
+            return [
+                client.userBareJid.stringValue.lowercased(),
+                client.userBareJid.domain.lowercased(),
+            ]
+        case .muc:
+            return [archive.jid.lowercased()]
+        }
+    }
 
     private func startArchiveSyncIfAvailable() {
         guard let client,
@@ -2309,6 +2578,145 @@ final class XMPPService {
             retry: 0
         )
     }
+    
+    private func enqueueMUCCatchup(roomJID: BareJID) {
+        let archive = MAMArchiveKey.muc(roomJID.stringValue)
+        guard activeMUCCatchup != archive,
+              !pendingMUCCatchups.contains(archive) else { return }
+        pendingMUCCatchups.append(archive)
+        startNextMUCCatchupIfPossible()
+    }
+    
+    /// Keep this first version serialized with the account pass. It prevents
+    /// archive mutations from different namespaces sharing the legacy batch.
+    /// Patch 0007 makes live delivery archive-aware while catch-up runs.
+    private func startNextMUCCatchupIfPossible() {
+        guard activeMUCCatchup == nil,
+              !archiveSyncStarted,
+              let client,
+              client.state == .connected(),
+              !client.module(.mam).availableVersions.isEmpty,
+              !pendingMUCCatchups.isEmpty else { return }
+        
+        let archive = pendingMUCCatchups.removeFirst()
+        activeMUCCatchup = archive
+        mucCatchupHighWatermark = nil
+        mucCatchupLastCursor = mamCheckpoints[archive]?.cursor
+        queryMUCArchivePage(
+            archive: archive,
+            after: mamCheckpoints[archive]?.cursor,
+            client: client
+        )
+    }
+    
+    private func queryMUCArchivePage(
+        archive: MAMArchiveKey,
+        after: String?,
+        client: XMPPClient
+    ) {
+        guard activeMUCCatchup == archive else { return }
+        let queryID = UUID().uuidString
+        archiveStanzaInbox.begin(
+            queryID: queryID,
+            allowedSources: allowedMAMSources(for: archive, client: client)
+        )
+        
+        let checkpoint = mamCheckpoints[archive]
+        let start = after == nil
+        ? checkpoint?.timestamp.addingTimeInterval(-ArchiveSyncRecoveryPolicy.incrementalOverlap)
+        : nil
+        let rsm = checkpoint == nil
+        ? RSM.Query(lastItems: archiveBootstrapMessageLimit)
+        : RSM.Query(after: after, max: archivePageSize)
+        
+        queryMAM(
+            client: client,
+            archive: archive,
+            start: start,
+            queryID: queryID,
+            rsm: rsm
+        ) { [weak self, weak client] result in
+            DispatchQueue.main.async {
+                guard let self, let client,
+                      self.activeMUCCatchup == archive else { return }
+                let page = self.archiveStanzaInbox.take(queryID: queryID)
+                guard !page.overflowed, !page.rejectedSource else {
+                    self.finishMUCCatchup(archive: archive, succeeded: false)
+                    return
+                }
+                for stanza in page.stanzas {
+                    self.mucCatchupHighWatermark = max(
+                        self.mucCatchupHighWatermark ?? .distantPast,
+                        stanza.timestamp
+                    )
+//                    guard stanza.message.type == .groupchat,
+//                          let roomJID = stanza.message.from?.bareJid,
+//                          let room = client.module(.muc).roomManager.room(
+//                            for: client, with: roomJID
+//                          ) else { continue }
+//                    self.handle(groupMessage: stanza.message, room: room)
+                    guard stanza.message.type == .groupchat,
+                          let roomJID = stanza.message.from?.bareJid else { continue }
+                    self.handle(
+                        groupMessage: stanza.message,
+                        archivedRoomJID: roomJID,
+                        archivedTimestamp: stanza.timestamp,
+                        archiveID: stanza.archiveID,
+                        isArchived: true
+                    )
+                }
+                
+                switch result {
+//                case .failure:
+//                    self.finishMUCCatchup(archive: archive, succeeded: false)
+                case .failure:
+                    // Same recovery principle as account MAM: a retained local
+                    // UID may have expired on the server. Retry once from the
+                    // durable timestamp overlap, never loop cursor<->time.
+                    if self.mamCheckpoints[archive]?.cursor != nil,
+                       self.mucCursorFallbackArchives.insert(archive).inserted,
+                       let old = self.mamCheckpoints[archive] {
+                        self.mamCheckpoints[archive] = MAMArchiveCheckpoint(
+                            timestamp: old.timestamp,
+                            cursor: nil
+                        )
+                        self.queryMUCArchivePage(
+                            archive: archive,
+                            after: nil,
+                            client: client
+                        )
+                    } else {
+                        self.finishMUCCatchup(archive: archive, succeeded: false)
+                    }
+                case .success(let response):
+                    self.mucCatchupLastCursor = response.rsm?.last ?? self.mucCatchupLastCursor
+                    if !response.complete, let next = response.rsm?.last, next != after {
+                        self.queryMUCArchivePage(archive: archive, after: next, client: client)
+                    } else {
+                        self.finishMUCCatchup(archive: archive, succeeded: true)
+                    }
+                }
+            }
+        }
+    }
+    
+    private func finishMUCCatchup(archive: MAMArchiveKey, succeeded: Bool) {
+        defer {
+            activeMUCCatchup = nil
+            mucCatchupHighWatermark = nil
+            mucCatchupLastCursor = nil
+            replayDelayedLive(for: archive)
+            startNextMUCCatchupIfPossible()
+        }
+        guard succeeded else { return }
+        let checkpoint = MAMArchiveCheckpoint(
+            timestamp: max(mucCatchupHighWatermark ?? .distantPast, Date()),
+            cursor: mucCatchupLastCursor
+        )
+        mamCheckpoints[archive] = checkpoint
+        mucCursorFallbackArchives.remove(archive)
+        eventHandler?(.mucArchiveSyncCompleted(archive: archive, checkpoint: checkpoint))
+    }
 
     private func queryArchive(client: XMPPClient, after: String?, retry: Int) {
         guard archiveSyncStarted,
@@ -2327,12 +2735,14 @@ final class XMPPService {
         archiveStanzaBuffer.removeAll(keepingCapacity: true)
         archiveBufferOverflowed = false
         archiveRejectedSource = false
+        let accountArchive = MAMArchiveKey.account(client.userBareJid.stringValue)
         archiveStanzaInbox.begin(
             queryID: queryID,
-            allowedSources: [
-                client.userBareJid.stringValue,
-                client.userBareJid.domain,
-            ]
+//            allowedSources: [
+//                client.userBareJid.stringValue,
+//                client.userBareJid.domain,
+//            ]
+            allowedSources: allowedMAMSources(for: accountArchive, client: client)
         )
         scheduleArchiveQueryTimeout(client: client, queryID: queryID)
         let start =
@@ -2346,9 +2756,12 @@ final class XMPPService {
             archiveIsBootstrapQuery
             ? RSM.Query(lastItems: archiveBootstrapMessageLimit)
             : RSM.Query(after: after, max: archivePageSize)
-        client.module(.mam).queryItems(
+//        client.module(.mam).queryItems(
+        queryMAM(
+            client: client,
+            archive: accountArchive,
             start: start,
-            queryId: queryID,
+            queryID: queryID,
             rsm: resultSet
         ) { [weak self, weak client] result in
             // XEP-0313 guarantees that the final IQ follows every result. The
@@ -2431,13 +2844,21 @@ final class XMPPService {
                 //     isArchived: true
                 // )
                 if stanza.message.type == .groupchat,
-                    let roomJID = stanza.message.from?.bareJid,
-                    let room = client?.module(.muc).roomManager.room(for: client!, with: roomJID)
+//                    let roomJID = stanza.message.from?.bareJid,
+//                    let room = client?.module(.muc).roomManager.room(for: client!, with: roomJID)
+                    let roomJID = stanza.message.from?.bareJid
                 {
                     // Some servers include MUC messages in the account MAM.
                     // Route them through the same group handler instead of
                     // dropping them in the direct-message handler.
-                    handle(groupMessage: stanza.message, room: room)
+//                    handle(groupMessage: stanza.message, room: room)
+                    handle(
+                        groupMessage: stanza.message,
+                        archivedRoomJID: roomJID,
+                        archivedTimestamp: stanza.timestamp,
+                        archiveID: stanza.archiveID,
+                        isArchived: true
+                    )
                 } else {
                     handle(
                         message: stanza.message,
@@ -2779,6 +3200,8 @@ final class XMPPService {
             archiveResumeAfter = nil
             archiveRetrySuppressedUntilActivation = false
             eventHandler?(.archiveSyncCompleted(resolvedCheckpoint))
+            replayDelayedLive(for: .account(client.userBareJid.stringValue))
+            startNextMUCCatchupIfPossible()
             return
         }
 

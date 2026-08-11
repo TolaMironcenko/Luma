@@ -2,7 +2,7 @@ import Foundation
 
 actor ChatArchive {
     struct Snapshot: Codable, Sendable {
-        static let currentSchemaVersion = 5
+        static let currentSchemaVersion = 6
 
         var schemaVersion: Int
         var conversations: [Conversation]
@@ -11,6 +11,7 @@ actor ChatArchive {
         var rosterContactJIDs: Set<String>
         var lastSuccessfulMAMSync: Date?
         var lastSuccessfulMAMCursor: String?
+        var mamCheckpoints: [MAMArchiveKey: MAMArchiveCheckpoint]
 
         init(
             conversations: [Conversation],
@@ -18,7 +19,8 @@ actor ChatArchive {
             locallyDeletedMessageIDs: Set<String> = [],
             rosterContactJIDs: Set<String> = [],
             lastSuccessfulMAMSync: Date? = nil,
-            lastSuccessfulMAMCursor: String? = nil
+            lastSuccessfulMAMCursor: String? = nil,
+            mamCheckpoints: [MAMArchiveKey: MAMArchiveCheckpoint] = [:]
         ) {
             self.schemaVersion = Self.currentSchemaVersion
             self.conversations = conversations
@@ -29,6 +31,7 @@ actor ChatArchive {
             self.lastSuccessfulMAMCursor = ArchiveSyncCheckpoint.normalizedCursor(
                 lastSuccessfulMAMCursor
             )
+            self.mamCheckpoints = mamCheckpoints
         }
 
         private enum CodingKeys: String, CodingKey {
@@ -39,6 +42,7 @@ actor ChatArchive {
             case rosterContactJIDs
             case lastSuccessfulMAMSync
             case lastSuccessfulMAMCursor
+            case mamCheckpoints
         }
 
         init(from decoder: Decoder) throws {
@@ -61,6 +65,9 @@ actor ChatArchive {
             lastSuccessfulMAMCursor = ArchiveSyncCheckpoint.normalizedCursor(
                 try values.decodeIfPresent(String.self, forKey: .lastSuccessfulMAMCursor)
             )
+            mamCheckpoints = try values.decodeIfPresent(
+                            [MAMArchiveKey: MAMArchiveCheckpoint].self, forKey: .mamCheckpoints
+                        ) ?? [:]
         }
 
         static let empty = Snapshot(conversations: [], messages: [])

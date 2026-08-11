@@ -61,6 +61,7 @@ struct ChatMessage: Codable, Identifiable, Hashable, Sendable {
     var replyPreview: String?
     var forwardedFrom: String?
     var retractedAt: Date?
+    var originID: String?
     var stanzaID: String?
     var senderDisplayName: String?
     var isGroupMessage: Bool
@@ -89,6 +90,7 @@ struct ChatMessage: Codable, Identifiable, Hashable, Sendable {
         replyPreview: String? = nil,
         forwardedFrom: String? = nil,
         retractedAt: Date? = nil,
+        originID: String? = nil,
         stanzaID: String? = nil,
         senderDisplayName: String? = nil,
         isGroupMessage: Bool = false,
@@ -116,6 +118,7 @@ struct ChatMessage: Codable, Identifiable, Hashable, Sendable {
         self.replyPreview = replyPreview
         self.forwardedFrom = forwardedFrom
         self.retractedAt = retractedAt
+        self.originID = originID ?? (direction == .outgoing ? id : nil)
         self.stanzaID = stanzaID
         self.senderDisplayName = senderDisplayName
         self.isGroupMessage = isGroupMessage
@@ -145,6 +148,7 @@ struct ChatMessage: Codable, Identifiable, Hashable, Sendable {
         case replyPreview
         case forwardedFrom
         case retractedAt
+        case originID
         case stanzaID
         case senderDisplayName
         case isGroupMessage
@@ -175,6 +179,7 @@ struct ChatMessage: Codable, Identifiable, Hashable, Sendable {
         replyPreview = try values.decodeIfPresent(String.self, forKey: .replyPreview)
         forwardedFrom = try values.decodeIfPresent(String.self, forKey: .forwardedFrom)
         retractedAt = try values.decodeIfPresent(Date.self, forKey: .retractedAt)
+        originID = try values.decodeIfPresent(String.self, forKey: .originID)
         stanzaID = try values.decodeIfPresent(String.self, forKey: .stanzaID)
         senderDisplayName = try values.decodeIfPresent(String.self, forKey: .senderDisplayName)
         isGroupMessage = try values.decodeIfPresent(Bool.self, forKey: .isGroupMessage) ?? false
