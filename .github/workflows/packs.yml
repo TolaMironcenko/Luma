@@ -68,6 +68,7 @@ jobs:
       - name: Compress macOS App
         run: |
           cd build/DerivedData/Build/Products/Release
+          ls
           zip -r macOS-App.zip LumaMac.app
 
       - name: Upload macOS Artifact
