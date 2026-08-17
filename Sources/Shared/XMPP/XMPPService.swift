@@ -1694,7 +1694,7 @@ final class XMPPService {
         from sender: BareJID,
         serverMsgId: String?,
         module: OMEMOModule
-    ) async -> OMEMOModule.DecryptionResult<Message, SignalError> {
+    ) async -> DecryptionResult<Message, SignalError> {
         let queue = omemoDecodeQueue
         return await withCheckedContinuation { continuation in
             queue.async {
