@@ -10,6 +10,7 @@ final class ChatArchiveTests: XCTestCase {
             conversationID: conversation.id,
             senderJID: jid,
             body: "Encrypted hello",
+            timestamp: Date(timeIntervalSince1970: 1_700_000_000),
             direction: .outgoing,
             delivery: .sent,
             security: .omemo
