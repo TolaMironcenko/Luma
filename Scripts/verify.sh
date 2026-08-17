@@ -554,8 +554,8 @@ grep -q 'snapshotQueue.async' Sources/Shared/Services/PhoneWatchBridge.swift || 
   exit 1
 }
 awk '
-  /^#if os\(iOS\)$/ { ios_only = 1; next }
-  /^#endif$/ && ios_only { ios_only = 0; next }
+  /^[[:space:]]*#if os\(iOS\)$/ { ios_only = 1; next }
+  /^[[:space:]]*#endif$/ && ios_only { ios_only = 0; next }
   /availableVideoCodecTypes/ {
     found = 1
     if (!ios_only) escaped = 1
