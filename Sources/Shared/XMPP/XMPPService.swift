@@ -274,6 +274,8 @@ final class XMPPService {
     private var archiveRetryTask: Task<Void, Never>?
     private var archiveQueryTimeoutTask: Task<Void, Never>?
     private var archiveQueryCompletionTask: Task<Void, Never>?
+    private var archiveSyncRetryTask: Task<Void, Never>?
+    private var archiveAutoRetryCount = 0
     private var archiveActiveQueryID: String?
     private var archiveResumeAfter: String?
     private var archiveWorkBudget = ArchiveSyncWorkBudget()
@@ -306,6 +308,15 @@ final class XMPPService {
     private var olderHistoryQueryID: String?
     private var olderHistoryTimeoutTask: Task<Void, Never>?
     private let olderHistoryQueryTimeoutNanoseconds: UInt64 = 15_000_000_000
+    /// Serial background queue for OMEMO decryption. `decode` performs the
+    /// expensive Signal work (session decrypt + AES-GCM) and previously ran on
+    /// the main actor for every MAM stanza, stalling the UI during large
+    /// archive catch-ups. All decodes stay serialized on this single queue so
+    /// Signal's per-session state is never mutated concurrently.
+    private let omemoDecodeQueue = DispatchQueue(
+        label: "app.luma.omemo.decode",
+        qos: .userInitiated
+    )
     private let archiveStanzaInbox = ArchiveStanzaInbox(
         maximumCount: ArchiveMessageBatchPolicy.maximumBufferedStanzas
     )
@@ -373,6 +384,9 @@ final class XMPPService {
         archiveQueryTimeoutTask = nil
         archiveQueryCompletionTask?.cancel()
         archiveQueryCompletionTask = nil
+        archiveSyncRetryTask?.cancel()
+        archiveSyncRetryTask = nil
+        archiveAutoRetryCount = 0
         archiveActiveQueryID = nil
         archiveResumeAfter = nil
         archiveWorkBudget = ArchiveSyncWorkBudget()
@@ -438,6 +452,9 @@ final class XMPPService {
         archiveQueryTimeoutTask = nil
         archiveQueryCompletionTask?.cancel()
         archiveQueryCompletionTask = nil
+        archiveSyncRetryTask?.cancel()
+        archiveSyncRetryTask = nil
+        archiveAutoRetryCount = 0
         archiveActiveQueryID = nil
         archiveResumeAfter = nil
         archiveWorkBudget = ArchiveSyncWorkBudget()
@@ -495,6 +512,9 @@ final class XMPPService {
         _ = client.module(.csi).setState(active)
         if active {
             archiveRetrySuppressedUntilActivation = false
+            archiveAutoRetryCount = 0
+            archiveSyncRetryTask?.cancel()
+            archiveSyncRetryTask = nil
             refreshArchiveIfNeeded(client: client)
         } else {
             // iOS may freeze network callbacks and timeout tasks while the
@@ -927,43 +947,49 @@ final class XMPPService {
                     return
                 }
                 
-                // History is only allowed while catch-up is idle, so the
-                // legacy mutation accumulator can safely be used as a local
-                // page collector here.
-                let savedMutations = self.archivePassMutations
-                self.archivePassMutations = []
-                for stanza in page.stanzas {
-                    if stanza.message.type == .groupchat,
-                       let roomJID = stanza.message.from?.bareJid {
-                        self.handle(
-                            groupMessage: stanza.message,
-                            archivedRoomJID: roomJID,
-                            archivedTimestamp: stanza.timestamp,
-                            archiveID: stanza.archiveID,
-                            isArchived: true
-                        )
-                    } else {
-                        self.handle(
-                            message: stanza.message,
-                            timestamp: stanza.timestamp,
-                            archiveID: stanza.archiveID,
-                            isArchived: true,
-                            archivedPeerJID: isGroup ? nil : BareJID(conversationJID.lowercased())
-                        )
+                Task { @MainActor [weak self, weak client] in
+                    guard let self, let client else {
+                        completion(.failure(LumaXMPPError.notConnected))
+                        return
                     }
-                }
-                let historyMutations = self.archivePassMutations
-                self.archivePassMutations = savedMutations
-                if !historyMutations.isEmpty {
-                    self.eventHandler?(.archiveBatch(historyMutations))
-                }
-                switch result {
-                case .success(let response):
-                    completion(.success(!response.complete))
-                case .failure(let error):
-                    // Do not leave the UI in the loading state. A failed
-                    // interactive query is recoverable by the next scroll.
-                    completion(.failure(error))
+                    // History is only allowed while catch-up is idle, so the
+                    // legacy mutation accumulator can safely be used as a local
+                    // page collector here.
+                    let savedMutations = self.archivePassMutations
+                    self.archivePassMutations = []
+                    for stanza in page.stanzas {
+                        if stanza.message.type == .groupchat,
+                           let roomJID = stanza.message.from?.bareJid {
+                            await self.handle(
+                                groupMessage: stanza.message,
+                                archivedRoomJID: roomJID,
+                                archivedTimestamp: stanza.timestamp,
+                                archiveID: stanza.archiveID,
+                                isArchived: true
+                            )
+                        } else {
+                            await self.handle(
+                                message: stanza.message,
+                                timestamp: stanza.timestamp,
+                                archiveID: stanza.archiveID,
+                                isArchived: true,
+                                archivedPeerJID: isGroup ? nil : BareJID(conversationJID.lowercased())
+                            )
+                        }
+                    }
+                    let historyMutations = self.archivePassMutations
+                    self.archivePassMutations = savedMutations
+                    if !historyMutations.isEmpty {
+                        self.eventHandler?(.archiveBatch(historyMutations))
+                    }
+                    switch result {
+                    case .success(let response):
+                        completion(.success(!response.complete))
+                    case .failure(let error):
+                        // Do not leave the UI in the loading state. A failed
+                        // interactive query is recoverable by the next scroll.
+                        completion(.failure(error))
+                    }
                 }
             }
         }
@@ -1535,16 +1561,18 @@ final class XMPPService {
         client.module(.message).messagesPublisher
             .receive(on: DispatchQueue.main)
             .sink { [weak self] incoming in
-//                self?.handle(message: incoming.message, timestamp: Date(), archiveID: nil)
-                self?.deliverOrDelayDirect(incoming.message, timestamp: Date())
+                Task { @MainActor [weak self] in
+                    await self?.deliverOrDelayDirect(incoming.message, timestamp: Date())
+                }
             }
             .store(in: &cancellables)
 
         client.module(.muc).messagesPublisher
             .receive(on: DispatchQueue.main)
             .sink { [weak self] incoming in
-//                self?.handle(groupMessage: incoming.message, room: incoming.room)
-                self?.deliverOrDelayGroup(incoming.message, room: incoming.room)
+                Task { @MainActor [weak self] in
+                    await self?.deliverOrDelayGroup(incoming.message, room: incoming.room)
+                }
             }
             .store(in: &cancellables)
 
@@ -1565,8 +1593,9 @@ final class XMPPService {
         client.module(.messageCarbons).carbonsPublisher
             .receive(on: DispatchQueue.main)
             .sink { [weak self] carbon in
-//                self?.handle(message: carbon.message, timestamp: Date(), archiveID: nil)
-                self?.deliverOrDelayDirect(carbon.message, timestamp: Date())
+                Task { @MainActor [weak self] in
+                    await self?.deliverOrDelayDirect(carbon.message, timestamp: Date())
+                }
             }
             .store(in: &cancellables)
 
@@ -1622,7 +1651,7 @@ final class XMPPService {
             .store(in: &cancellables)
     }
     
-    private func deliverOrDelayDirect(_ message: Message, timestamp: Date) {
+    private func deliverOrDelayDirect(_ message: Message, timestamp: Date) async {
         guard let client else { return }
         let archive = MAMArchiveKey.account(client.userBareJid.stringValue)
         if archiveSyncStarted {
@@ -1631,10 +1660,10 @@ final class XMPPService {
             )
             return
         }
-        handle(message: message, timestamp: timestamp, archiveID: nil)
+        await handle(message: message, timestamp: timestamp, archiveID: nil)
     }
     
-    private func deliverOrDelayGroup(_ message: Message, room: RoomProtocol) {
+    private func deliverOrDelayGroup(_ message: Message, room: RoomProtocol) async {
         let archive = MAMArchiveKey.muc(room.jid.stringValue)
         if activeMUCCatchup == archive {
             delayedLiveByArchive[archive, default: []].append(
@@ -1642,17 +1671,35 @@ final class XMPPService {
             )
             return
         }
-        handle(groupMessage: message, room: room)
+        await handle(groupMessage: message, room: room)
     }
     
-    private func replayDelayedLive(for archive: MAMArchiveKey) {
+    private func replayDelayedLive(for archive: MAMArchiveKey) async {
         let delayed = delayedLiveByArchive.removeValue(forKey: archive) ?? []
         for item in delayed {
             switch item {
             case .direct(let message, let timestamp):
-                handle(message: message, timestamp: timestamp, archiveID: nil)
+                await handle(message: message, timestamp: timestamp, archiveID: nil)
             case .group(let message, let room):
-                handle(groupMessage: message, room: room)
+                await handle(groupMessage: message, room: room)
+            }
+        }
+    }
+
+    /// Runs OMEMO decryption off the main actor and resumes with the raw
+    /// result. Kept as a thin wrapper so `handle` keeps its existing switch
+    /// logic and only the expensive `decode` call leaves the main thread.
+    private func decodeOmemoOffMain(
+        _ message: Message,
+        from sender: BareJID,
+        serverMsgId: String?,
+        module: OMEMOModule
+    ) async -> OMEMOModule.DecryptionResult<Message, SignalError> {
+        let queue = omemoDecodeQueue
+        return await withCheckedContinuation { continuation in
+            queue.async {
+                let result = module.decode(message: message, from: sender, serverMsgId: serverMsgId)
+                continuation.resume(returning: result)
             }
         }
     }
@@ -1676,7 +1723,7 @@ final class XMPPService {
         archiveID: String?,
         isArchived: Bool = false,
         archivedPeerJID: BareJID? = nil
-    ) {
+    ) async {
         guard message.type != .error,
             message.type != .groupchat,
             let client,
@@ -1701,8 +1748,12 @@ final class XMPPService {
         let security: ChatMessage.Security
         let fingerprint: String?
         let contentMessage: Message?
-        switch client.module(.omemo).decode(message: message, from: sender, serverMsgId: archiveID)
-        {
+        switch await decodeOmemoOffMain(
+            message,
+            from: sender,
+            serverMsgId: archiveID,
+            module: client.module(.omemo)
+        ) {
         case .successMessage(let decodedMessage, let value):
             security = .omemo
             fingerprint = value
@@ -1887,7 +1938,7 @@ final class XMPPService {
         archivedTimestamp: Date? = nil,
         archiveID: String? = nil,
         isArchived: Bool = false
-    ) {
+    ) async {
         guard message.type != .error,
             let client,
             let from = message.from,
@@ -1934,10 +1985,11 @@ final class XMPPService {
         let fingerprint: String?
         let contentMessage: Message?
         if let realSender {
-            switch client.module(.omemo).decode(
-                message: message,
+            switch await decodeOmemoOffMain(
+                message,
                 from: realSender,
-                serverMsgId: stanzaID
+                serverMsgId: stanzaID,
+                module: client.module(.omemo)
             ) {
             case .successMessage(let decodedMessage, let value):
                 security = .omemo
@@ -2672,12 +2724,19 @@ final class XMPPService {
         archiveQueryTimeoutTask = nil
         archiveQueryCompletionTask?.cancel()
         archiveQueryCompletionTask = nil
+        archiveSyncRetryTask?.cancel()
+        archiveSyncRetryTask = nil
         archiveActiveQueryID = nil
         archiveStanzaBuffer.removeAll(keepingCapacity: true)
         archiveBufferOverflowed = false
         archiveRejectedSource = false
         archiveStanzaInbox.cancel()
-        setArchiveSyncIndicator(true)
+        // Show the visible "Синхронизация истории…" banner only for the
+        // one-page bootstrap window. Incremental catch-up continues silently so
+        // a large backlog never leaves the spinner visible for the whole pass.
+        if archiveIsBootstrapQuery {
+            setArchiveSyncIndicator(true)
+        }
         client.module(.omemo).mamSyncStarted(for: nil)
         let initialPosition = ArchiveSyncCursorPolicy.requestPosition(
             checkpoint: archiveSyncCheckpoint,
@@ -2756,56 +2815,54 @@ final class XMPPService {
                     self.finishMUCCatchup(archive: archive, succeeded: false)
                     return
                 }
-                for stanza in page.stanzas {
-                    self.mucCatchupHighWatermark = max(
-                        self.mucCatchupHighWatermark ?? .distantPast,
-                        stanza.timestamp
-                    )
-//                    guard stanza.message.type == .groupchat,
-//                          let roomJID = stanza.message.from?.bareJid,
-//                          let room = client.module(.muc).roomManager.room(
-//                            for: client, with: roomJID
-//                          ) else { continue }
-//                    self.handle(groupMessage: stanza.message, room: room)
-                    guard stanza.message.type == .groupchat,
-                          let roomJID = stanza.message.from?.bareJid else { continue }
-                    self.handle(
-                        groupMessage: stanza.message,
-                        archivedRoomJID: roomJID,
-                        archivedTimestamp: stanza.timestamp,
-                        archiveID: stanza.archiveID,
-                        isArchived: true
-                    )
-                }
-                
-                switch result {
-//                case .failure:
-//                    self.finishMUCCatchup(archive: archive, succeeded: false)
-                case .failure:
-                    // Same recovery principle as account MAM: a retained local
-                    // UID may have expired on the server. Retry once from the
-                    // durable timestamp overlap, never loop cursor<->time.
-                    if self.mamCheckpoints[archive]?.cursor != nil,
-                       self.mucCursorFallbackArchives.insert(archive).inserted,
-                       let old = self.mamCheckpoints[archive] {
-                        self.mamCheckpoints[archive] = MAMArchiveCheckpoint(
-                            timestamp: old.timestamp,
-                            cursor: nil
+                Task { @MainActor [weak self, weak client] in
+                    guard let self, let client,
+                          self.activeMUCCatchup == archive else { return }
+                    for stanza in page.stanzas {
+                        self.mucCatchupHighWatermark = max(
+                            self.mucCatchupHighWatermark ?? .distantPast,
+                            stanza.timestamp
                         )
-                        self.queryMUCArchivePage(
-                            archive: archive,
-                            after: nil,
-                            client: client
+                        guard stanza.message.type == .groupchat,
+                              let roomJID = stanza.message.from?.bareJid else { continue }
+                        await self.handle(
+                            groupMessage: stanza.message,
+                            archivedRoomJID: roomJID,
+                            archivedTimestamp: stanza.timestamp,
+                            archiveID: stanza.archiveID,
+                            isArchived: true
                         )
-                    } else {
-                        self.finishMUCCatchup(archive: archive, succeeded: false)
                     }
-                case .success(let response):
-                    self.mucCatchupLastCursor = response.rsm?.last ?? self.mucCatchupLastCursor
-                    if !response.complete, let next = response.rsm?.last, next != after {
-                        self.queryMUCArchivePage(archive: archive, after: next, client: client)
-                    } else {
-                        self.finishMUCCatchup(archive: archive, succeeded: true)
+
+                    switch result {
+                    case .failure:
+                        // Same recovery principle as account MAM: a retained
+                        // local UID may have expired on the server. Retry once
+                        // from the durable timestamp overlap, never loop
+                        // cursor<->time.
+                        if self.mamCheckpoints[archive]?.cursor != nil,
+                           self.mucCursorFallbackArchives.insert(archive).inserted,
+                           let old = self.mamCheckpoints[archive] {
+                            self.mamCheckpoints[archive] = MAMArchiveCheckpoint(
+                                timestamp: old.timestamp,
+                                cursor: nil
+                            )
+                            self.queryMUCArchivePage(
+                                archive: archive,
+                                after: nil,
+                                client: client
+                            )
+                        } else {
+                            self.finishMUCCatchup(archive: archive, succeeded: false)
+                        }
+                    case .success(let response):
+                        self.mucCatchupLastCursor =
+                            response.rsm?.last ?? self.mucCatchupLastCursor
+                        if !response.complete, let next = response.rsm?.last, next != after {
+                            self.queryMUCArchivePage(archive: archive, after: next, client: client)
+                        } else {
+                            self.finishMUCCatchup(archive: archive, succeeded: true)
+                        }
                     }
                 }
             }
@@ -2817,9 +2874,21 @@ final class XMPPService {
             activeMUCCatchup = nil
             mucCatchupHighWatermark = nil
             mucCatchupLastCursor = nil
-            replayDelayedLive(for: archive)
+            Task { @MainActor [weak self] in
+                await self?.replayDelayedLive(for: archive)
+            }
             startNextMUCCatchupIfPossible()
             startPendingOlderHistoryIfPossible()
+        }
+        // MUC catch-up decodes into archivePassMutations just like the account
+        // pass. Publish them once the room catch-up settles, otherwise group
+        // history fetched via MAM is decoded and then silently dropped.
+        if succeeded, !archivePassMutations.isEmpty {
+            let mutations = archivePassMutations
+            archivePassMutations.removeAll(keepingCapacity: true)
+            eventHandler?(.archiveBatch(mutations))
+        } else {
+            archivePassMutations.removeAll(keepingCapacity: true)
         }
         guard succeeded else { return }
         let checkpoint = MAMArchiveCheckpoint(
@@ -2965,7 +3034,7 @@ final class XMPPService {
                     // Route them through the same group handler instead of
                     // dropping them in the direct-message handler.
 //                    handle(groupMessage: stanza.message, room: room)
-                    handle(
+                    await handle(
                         groupMessage: stanza.message,
                         archivedRoomJID: roomJID,
                         archivedTimestamp: stanza.timestamp,
@@ -2973,7 +3042,7 @@ final class XMPPService {
                         isArchived: true
                     )
                 } else {
-                    handle(
+                    await handle(
                         message: stanza.message,
                         timestamp: stanza.timestamp,
                         archiveID: stanza.archiveID,
@@ -3063,24 +3132,6 @@ final class XMPPService {
                     caughtUp: false
                 )
                 archiveLastCompletedCursor = checkpoint.cursor
-                // if workBudgetReached {
-                //     if checkpoint.advances(over: archiveSyncCheckpoint) {
-                //         finishArchiveSync(
-                //             client: client,
-                //             succeeded: true,
-                //             checkpoint: checkpoint
-                //         )
-                //     } else {
-                //         archivePassMutations.removeAll(keepingCapacity: true)
-                //         eventHandler?(
-                //             .recoverableError(
-                //                 "MAM не продвинул контрольную точку; синхронизация приостановлена."
-                //             ))
-                //         finishArchiveSync(client: client, succeeded: false)
-                //     }
-                // } else {
-                //     scheduleArchiveNextPage(client: client, after: cursor)
-                // }
                 if workBudgetReached {
                     guard checkpoint.advances(over: archiveSyncCheckpoint) else {
                         archivePassMutations.removeAll(keepingCapacity: true)
@@ -3092,10 +3143,10 @@ final class XMPPService {
                         return
                     }
 
-                    // The foreground budget is only a UI-yield boundary.  It
-                    // must NOT turn response.complete == false into a completed
-                    // MAM pass, otherwise messages after this cursor are missed
-                    // until a later activation.
+                    // Flush the accumulated mutations so the UI advances
+                    // incrementally, then keep catching up in the background.
+                    // The visible sync banner is only shown for the bootstrap
+                    // window, so a large backlog never leaves a spinner hanging.
                     if !archivePassMutations.isEmpty {
                         let mutations = archivePassMutations
                         archivePassMutations.removeAll(keepingCapacity: true)
@@ -3313,8 +3364,12 @@ final class XMPPService {
             archiveSyncCompletedForConnection = true
             archiveResumeAfter = nil
             archiveRetrySuppressedUntilActivation = false
+            archiveAutoRetryCount = 0
             eventHandler?(.archiveSyncCompleted(resolvedCheckpoint))
-            replayDelayedLive(for: .account(client.userBareJid.stringValue))
+            Task { @MainActor [weak self, weak client] in
+                guard let self, let client else { return }
+                await self.replayDelayedLive(for: .account(client.userBareJid.stringValue))
+            }
             startNextMUCCatchupIfPossible()
             return
         }
@@ -3323,11 +3378,39 @@ final class XMPPService {
         archiveSyncCompletedForConnection = false
         archiveResumeAfter = archiveSyncCheckpoint?.cursor
         archiveLastCompletedCursor = archiveSyncCheckpoint?.cursor
-        archiveRetrySuppressedUntilActivation = true
-        eventHandler?(
-            .recoverableError(
-                "Синхронизация истории приостановлена. Luma продолжит после возврата в приложение."
-            ))
+        if archiveAutoRetryCount < ArchiveSyncRecoveryPolicy.maximumAutomaticRetries {
+            // A single slow/timed-out page must not leave history unloaded
+            // until the next app activation. Retry automatically a bounded
+            // number of times while still connected and foregrounded.
+            archiveAutoRetryCount += 1
+            archiveRetrySuppressedUntilActivation = false
+            scheduleArchiveSyncRetry(client: client)
+        } else {
+            archiveAutoRetryCount = 0
+            archiveRetrySuppressedUntilActivation = true
+            eventHandler?(
+                .recoverableError(
+                    "Синхронизация истории приостановлена. Luma продолжит после возврата в приложение."
+                ))
+        }
+    }
+
+    private func scheduleArchiveSyncRetry(client: XMPPClient) {
+        archiveSyncRetryTask?.cancel()
+        archiveSyncRetryTask = Task { @MainActor [weak self, weak client] in
+            try? await Task.sleep(
+                nanoseconds: ArchiveSyncRecoveryPolicy.retryAfterFailureDelayNanoseconds
+            )
+            guard !Task.isCancelled,
+                let self,
+                let client,
+                self.client === client,
+                client.state == .connected(),
+                !self.archiveSyncSuspended
+            else { return }
+            self.archiveSyncRetryTask = nil
+            self.refreshArchiveIfNeeded(client: client)
+        }
     }
 
     private func refreshArchiveIfNeeded(client: XMPPClient) {
@@ -3376,6 +3459,8 @@ final class XMPPService {
         archiveQueryTimeoutTask = nil
         archiveQueryCompletionTask?.cancel()
         archiveQueryCompletionTask = nil
+        archiveSyncRetryTask?.cancel()
+        archiveSyncRetryTask = nil
         if archiveSyncStarted {
             archiveResumeAfter = archiveSyncCheckpoint?.cursor
             client.module(.omemo).mamSyncFinished(for: nil)
@@ -3407,6 +3492,8 @@ final class XMPPService {
         archiveQueryTimeoutTask = nil
         archiveQueryCompletionTask?.cancel()
         archiveQueryCompletionTask = nil
+        archiveSyncRetryTask?.cancel()
+        archiveSyncRetryTask = nil
         archiveStanzaInbox.cancel()
         olderHistoryTimeoutTask?.cancel()
         olderHistoryTimeoutTask = nil

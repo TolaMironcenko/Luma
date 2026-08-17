@@ -7,8 +7,9 @@ final class ArchiveMessageBatchPolicyTests: XCTestCase {
         XCTAssertGreaterThan(ArchiveMessageBatchPolicy.pageSize, 0)
     }
 
-    func testOnlyOneStanzaIsDecodedPerMainActorSlice() {
-        XCTAssertEqual(ArchiveMessageBatchPolicy.decodeSliceSize, 1)
+    func testStanzasAreDecodedInSmallBatchesPerMainActorSlice() {
+        XCTAssertGreaterThan(ArchiveMessageBatchPolicy.decodeSliceSize, 0)
+        XCTAssertLessThanOrEqual(ArchiveMessageBatchPolicy.decodeSliceSize, 16)
         XCTAssertGreaterThan(ArchiveMessageBatchPolicy.interSliceDelayNanoseconds, 0)
     }
 

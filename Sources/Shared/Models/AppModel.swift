@@ -78,6 +78,7 @@ final class AppModel: ObservableObject {
     private var isApplyingArchiveBatch = false
     private var messageIndexByStorageKey: [String: Int] = [:]
     private var messageIndexByStanzaKey: [String: Int] = [:]
+    private var messageIndexByOriginKey: [String: Int] = [:]
     private var firstMessageIndexByID: [String: Int] = [:]
     private var selectedMessagesCacheConversationID: String?
     private var selectedMessagesCache: [ChatMessage] = []
@@ -1949,9 +1950,7 @@ final class AppModel: ObservableObject {
             return  // уже есть это сообщение
         }
         if let originID = envelope.originID,
-           messages.contains(where: {
-               $0.conversationID == envelope.peerJID.lowercased() && $0.originID == originID
-           }) {
+           messageIndex(originID: originID, conversationID: envelope.peerJID) != nil {
             mergeServerIdentity(from: envelope, matchingOriginID: originID)
             return
         }
@@ -2049,9 +2048,10 @@ final class AppModel: ObservableObject {
         from envelope: XMPPService.MessageEnvelope,
         matchingOriginID originID: String
     ) {
-        guard let index = messages.firstIndex(where: {
-            $0.conversationID == envelope.peerJID.lowercased() && $0.originID == originID
-        }) else { return }
+        guard let index = messageIndex(
+            originID: originID,
+            conversationID: envelope.peerJID
+        ) else { return }
         if messages[index].stanzaID == nil {
             messages[index].stanzaID = envelope.stanzaID
         }
@@ -2520,6 +2520,13 @@ final class AppModel: ObservableObject {
                         conversationID: merged.conversationID
                     )] = index
             }
+            if let originID = merged.originID {
+                messageIndexByOriginKey[
+                    Self.localDeletionKey(
+                        messageID: originID,
+                        conversationID: merged.conversationID
+                    )] = index
+            }
             updateConversationPreview(for: merged, incrementUnread: false)
             return false
         }
@@ -2537,6 +2544,13 @@ final class AppModel: ObservableObject {
             messageIndexByStanzaKey[
                 Self.localDeletionKey(
                     messageID: stanzaID,
+                    conversationID: message.conversationID
+                )] = insertedIndex
+        }
+        if let originID = message.originID {
+            messageIndexByOriginKey[
+                Self.localDeletionKey(
+                    messageID: originID,
                     conversationID: message.conversationID
                 )] = insertedIndex
         }
@@ -2626,20 +2640,41 @@ final class AppModel: ObservableObject {
             messageID: referenceID,
             conversationID: normalizedConversationID
         )
-        if let index = messageIndexByStanzaKey[key],
-            messages.indices.contains(index),
+        guard let index = messageIndexByStanzaKey[key] else { return nil }
+        if messages.indices.contains(index),
             messages[index].conversationID == normalizedConversationID,
             messages[index].stanzaID == referenceID
         {
             return index
         }
+        // Only rebuild when the key exists but points at a stale entry. A
+        // genuine miss is expected during archive catch-up for every new
+        // stanza-id and must not trigger an O(n) rebuild per message.
         rebuildMessageIndex()
         return messageIndexByStanzaKey[key]
+    }
+
+    private func messageIndex(originID: String, conversationID: String) -> Int? {
+        let normalizedConversationID = conversationID.lowercased()
+        let key = Self.localDeletionKey(
+            messageID: originID,
+            conversationID: normalizedConversationID
+        )
+        guard let index = messageIndexByOriginKey[key] else { return nil }
+        if messages.indices.contains(index),
+            messages[index].conversationID == normalizedConversationID,
+            messages[index].originID == originID
+        {
+            return index
+        }
+        rebuildMessageIndex()
+        return messageIndexByOriginKey[key]
     }
 
     private func rebuildMessageIndex() {
         messageIndexByStorageKey.removeAll(keepingCapacity: true)
         messageIndexByStanzaKey.removeAll(keepingCapacity: true)
+        messageIndexByOriginKey.removeAll(keepingCapacity: true)
         firstMessageIndexByID.removeAll(keepingCapacity: true)
         for (index, message) in messages.enumerated() {
             let key = Self.localDeletionKey(
@@ -2659,6 +2694,15 @@ final class AppModel: ObservableObject {
                 )
                 if messageIndexByStanzaKey[stanzaKey] == nil {
                     messageIndexByStanzaKey[stanzaKey] = index
+                }
+            }
+            if let originID = message.originID {
+                let originKey = Self.localDeletionKey(
+                    messageID: originID,
+                    conversationID: message.conversationID
+                )
+                if messageIndexByOriginKey[originKey] == nil {
+                    messageIndexByOriginKey[originKey] = index
                 }
             }
         }
