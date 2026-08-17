@@ -60,13 +60,14 @@ jobs:
             -project Luma.xcodeproj \
             -scheme LumaMac \
             -configuration Release \
+            -derivedDataPath build/DerivedData \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY=""
 
       - name: Compress macOS App
         run: |
-          cd build/Release
+          cd build/DerivedData/Build/Products/Release
           zip -r macOS-App.zip LumaMac.app
 
       - name: Upload macOS Artifact
