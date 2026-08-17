@@ -249,8 +249,8 @@ grep -q 'applyArchiveBatch(mutations)' Sources/Shared/Models/AppModel.swift || {
   echo "MAM mutations must be applied atomically before publishing SwiftUI state"
   exit 1
 }
-grep -q 'decodeSliceSize = 1' Sources/Shared/Models/ArchiveMessageBatchPolicy.swift || {
-  echo "MAM decoding must remain limited to one stanza per main-actor slice"
+grep -q 'decodeSliceSize = 8' Sources/Shared/Models/ArchiveMessageBatchPolicy.swift || {
+  echo "MAM decoding must stay batched in small per-slice groups"
   exit 1
 }
 grep -q 'lastSuccessfulMAMCursor' Sources/Shared/Persistence/ChatArchive.swift || {
