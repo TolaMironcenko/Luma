@@ -5,7 +5,7 @@ struct LoginView: View {
     @State private var jid = ""
     @State private var password = ""
     @State private var displayName = ""
-    @State private var resource = "Luma"
+    @State private var resource = ""
     @State private var showAdvanced = false
     @State private var manualHost = ""
     @State private var manualPort = ""
@@ -91,8 +91,11 @@ struct LoginView: View {
                 VStack(spacing: 14) {
                     TextField("Отображаемое имя", text: $displayName)
                         .textFieldStyle(.roundedBorder)
-                    TextField("Ресурс устройства", text: $resource)
+                    TextField("Автоматически (Luma-XXXX)", text: $resource)
                         .textFieldStyle(.roundedBorder)
+                    Text("Оставьте пустым — Luma создаст уникальный ресурс для этого устройства, чтобы macOS и iOS не конфликтовали между собой.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                     TextField("Сервер вручную (необязательно)", text: $manualHost)
                         .textFieldStyle(.roundedBorder)
                     TextField(directTLS ? "Порт, обычно 5223" : "Порт, обычно 5222", text: $manualPort)

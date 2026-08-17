@@ -513,6 +513,14 @@ final class AppModel: ObservableObject {
 //        schedulePersist()
 //        syncWatch()
 //        hasMoreOlderHistory = true
+        if hasMoreOlderHistoryByConversation[normalized] == false,
+           selectedMessages.isEmpty
+        {
+            // An empty conversation must be allowed to retry a load after a
+            // previous attempt returned zero results. Otherwise it stays empty
+            // with `hasMore = false` and no way to trigger loading again.
+            hasMoreOlderHistoryByConversation[normalized] = true
+        }
         hasMoreOlderHistory = hasMoreOlderHistoryByConversation[normalized] ?? true
     }
     
@@ -520,13 +528,13 @@ final class AppModel: ObservableObject {
         guard !isLoadingOlderHistory,
               hasMoreOlderHistory,
               let conversation = selectedConversation else { return }
-//        let oldestServerID = selectedMessages
-//            .sorted { lhs, rhs in
-//                if lhs.timestamp != rhs.timestamp { return lhs.timestamp < rhs.timestamp }
-//                return lhs.id < rhs.id
-//            }
-//            .compactMap(\.stanzaID)
-//            .first
+        //        let oldestServerID = selectedMessages
+        //            .sorted { lhs, rhs in
+        //                if lhs.timestamp != rhs.timestamp { return lhs.timestamp < rhs.timestamp }
+        //                return lhs.id < rhs.id
+        //            }
+        //            .compactMap(\.stanzaID)
+        //            .first
         let oldestServerID = selectedMessages
             .filter { $0.stanzaID != nil }
             .min { lhs, rhs in
@@ -534,7 +542,7 @@ final class AppModel: ObservableObject {
                 return lhs.id < rhs.id
             }?
             .stanzaID
-        
+
         isLoadingOlderHistory = true
         let conversationID = conversation.id.lowercased()
         xmpp.loadOlderHistory(
@@ -1763,6 +1771,7 @@ final class AppModel: ObservableObject {
                 // UI from displaying a stale spinner even if the archive
                 // completion event was overtaken by a socket state change.
                 isArchiveSyncing = false
+                isLoadingOlderHistory = false
                 for index in conversations.indices where conversations[index].isGroup {
                     conversations[index].isGroupJoined = false
                     conversations[index].occupantCount = 0

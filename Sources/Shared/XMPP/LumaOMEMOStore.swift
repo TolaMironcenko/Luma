@@ -103,6 +103,22 @@ final class LumaOMEMOStore: SignalStorage {
         sessionAdapter.containsSessionRecord(forAddress: address)
     }
 
+    /// Removes a session record with our own current device. A self-session is
+    /// cryptographically invalid (Signal sessions exist between two distinct
+    /// identities) and makes Martin's `_encode(..., forSelf: true)` encrypt to
+    /// the local device itself, producing messages that later fail with
+    /// "Bad MAC". Such a record can only be created by a bug; deleting it is
+    /// always safe and idempotent.
+    func removeSessionWithOwnDevice() {
+        let registrationID = identityAdapter.localRegistrationId()
+        guard registrationID != 0 else { return }
+        let address = SignalAddress(
+            name: repository.accountJID,
+            deviceId: Int32(bitPattern: registrationID)
+        )
+        _ = sessionAdapter.deleteSessionRecord(forAddress: address)
+    }
+
     func flushPendingPersistence() {
         repository.flush()
     }

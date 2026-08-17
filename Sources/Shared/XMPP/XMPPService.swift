@@ -298,15 +298,13 @@ final class XMPPService {
     private var mucCatchupLastCursor: String?
     private var mucCursorFallbackArchives: Set<MAMArchiveKey> = []
     private var delayedLiveByArchive: [MAMArchiveKey: [BufferedLiveDelivery]] = [:]
-    private struct PendingOlderHistoryRequest {
-        let conversationJID: String
-        let isGroup: Bool
-        let before: String?
-        let completion: (Result<Bool, Error>) -> Void
-    }
-    private var pendingOlderHistoryRequest: PendingOlderHistoryRequest?
     private var olderHistoryQueryID: String?
+    private var olderHistoryCompletion: ((Result<Bool, Error>) -> Void)?
     private var olderHistoryTimeoutTask: Task<Void, Never>?
+    /// When non-nil, archived mutations produced while applying an interactive
+    /// backward-history page are collected here instead of the catch-up
+    /// accumulator, so the two never interleave their mutations.
+    private var interactiveHistoryMutations: [ArchiveMutation]?
     private let olderHistoryQueryTimeoutNanoseconds: UInt64 = 15_000_000_000
     /// Serial background queue for OMEMO decryption. `decode` performs the
     /// expensive Signal work (session decrypt + AES-GCM) and previously ran on
@@ -422,6 +420,9 @@ final class XMPPService {
         guard let signalContext = SignalContext(withStorage: omemoStorage) else {
             throw LumaXMPPError.omemoInitializationFailed
         }
+        // Clean up any invalid self-session left behind by a previous buggy
+        // build so it cannot poison encrypt-to-self ("Bad MAC" loops).
+        omemoStorage.removeSessionWithOwnDevice()
 
         configureModules(client: client, signalContext: signalContext, omemoStorage: omemoStorage)
         configureConnection(client: client, account: account, password: password)
@@ -446,6 +447,7 @@ final class XMPPService {
 
     func disconnect() async {
         callEngine.detach()
+        finishOlderHistory(result: .failure(LumaXMPPError.notConnected))
         archiveRetryTask?.cancel()
         archiveRetryTask = nil
         archiveQueryTimeoutTask?.cancel()
@@ -855,17 +857,9 @@ final class XMPPService {
             completion(.failure(LumaXMPPError.notConnected))
             return
         }
-        //        guard !archiveSyncStarted, activeMUCCatchup == nil else {
-        //            completion(.success(false))
-        if archiveSyncStarted || activeMUCCatchup != nil {
-            pendingOlderHistoryRequest = PendingOlderHistoryRequest(
-                conversationJID: conversationJID,
-                isGroup: isGroup,
-                before: before,
-                completion: completion
-            )
-            return
-        }
+        // Interactive backward-history is fully independent from catch-up: it
+        // owns a query-ID-scoped inbox entry and its own mutation collector, so
+        // it must never wait for an account/MUC catch-up pass to settle.
         performOlderHistoryRequest(
             conversationJID: conversationJID,
             isGroup: isGroup,
@@ -885,20 +879,26 @@ final class XMPPService {
             return
         }
         guard let version = client.module(.mam).availableVersions.first else {
-//            completion(.success(false))
             completion(.failure(LumaXMPPError.connection("MAM недоступен")))
             return
         }
-        
+
         let archive = isGroup
         ? MAMArchiveKey.muc(conversationJID)
         : MAMArchiveKey.account(client.userBareJid.stringValue)
         // Only one interactive backward-history query is allowed at a time.
         // This is independent from the normal account/MUC catch-up query.
+        if let previous = olderHistoryCompletion {
+            // AppModel normally serializes requests, but never leak the
+            // previous completion if a request does slip through.
+            previous(.failure(LumaXMPPError.connection("Запрос истории заменён более новым.")))
+        }
         olderHistoryTimeoutTask?.cancel()
         olderHistoryTimeoutTask = nil
+        interactiveHistoryMutations = nil
         let queryID = UUID().uuidString
         olderHistoryQueryID = queryID
+        olderHistoryCompletion = completion
         archiveStanzaInbox.begin(
             queryID: queryID,
             allowedSources: allowedMAMSources(for: archive, client: client)
@@ -906,10 +906,9 @@ final class XMPPService {
         scheduleOlderHistoryTimeout(
             client: client,
             queryID: queryID,
-            conversationJID: conversationJID,
-            completion: completion
+            conversationJID: conversationJID
         )
-        
+
         // Martin 3.2.4's convenience overload accidentally clears `with`.
         // Construct MAMQueryForm explicitly so direct-chat history is truly
         // scoped to this peer.
@@ -921,7 +920,7 @@ final class XMPPService {
         let rsm: RSM.Query = before.map {
             RSM.Query(before: $0, max: archivePageSize)
         } ?? RSM.Query(lastItems: archivePageSize)
-        
+
         client.module(.mam).queryItems(
             version: version,
             componentJid: componentJID,
@@ -930,33 +929,39 @@ final class XMPPService {
             rsm: rsm
         ) { [weak self, weak client] result in
             DispatchQueue.main.async {
-                guard let self, let client else {
-//                    completion(.success(false))
+                guard let self else {
                     completion(.failure(LumaXMPPError.notConnected))
                     return
                 }
+                guard let client, self.client === client else {
+                    self.finishOlderHistory(result: .failure(LumaXMPPError.notConnected))
+                    return
+                }
                 guard self.olderHistoryQueryID == queryID else {
+                    // A newer request, a timeout, or a disconnect already owns
+                    // the slot and has released this completion.
                     return
                 }
                 self.olderHistoryTimeoutTask?.cancel()
                 self.olderHistoryTimeoutTask = nil
-                self.olderHistoryQueryID = nil
                 let page = self.archiveStanzaInbox.take(queryID: queryID)
                 guard !page.overflowed, !page.rejectedSource else {
-                    completion(.failure(LumaXMPPError.connection("Некорректная MAM history page")))
+                    self.finishOlderHistory(
+                        result: .failure(LumaXMPPError.connection("Некорректная MAM history page"))
+                    )
                     return
                 }
-                
+
                 Task { @MainActor [weak self, weak client] in
-                    guard let self, let client else {
-                        completion(.failure(LumaXMPPError.notConnected))
+                    guard let self else { return }
+                    guard let client, self.client === client else {
+                        self.finishOlderHistory(result: .failure(LumaXMPPError.notConnected))
                         return
                     }
-                    // History is only allowed while catch-up is idle, so the
-                    // legacy mutation accumulator can safely be used as a local
-                    // page collector here.
-                    let savedMutations = self.archivePassMutations
-                    self.archivePassMutations = []
+                    // Collect this page's mutations in a dedicated buffer so a
+                    // concurrently-running catch-up pass never interleaves its
+                    // mutations with the interactive page.
+                    self.interactiveHistoryMutations = []
                     for stanza in page.stanzas {
                         if stanza.message.type == .groupchat,
                            let roomJID = stanza.message.from?.bareJid {
@@ -977,29 +982,28 @@ final class XMPPService {
                             )
                         }
                     }
-                    let historyMutations = self.archivePassMutations
-                    self.archivePassMutations = savedMutations
+                    let historyMutations = self.interactiveHistoryMutations ?? []
+                    self.interactiveHistoryMutations = nil
                     if !historyMutations.isEmpty {
                         self.eventHandler?(.archiveBatch(historyMutations))
                     }
                     switch result {
                     case .success(let response):
-                        completion(.success(!response.complete))
+                        self.finishOlderHistory(result: .success(!response.complete))
                     case .failure(let error):
                         // Do not leave the UI in the loading state. A failed
                         // interactive query is recoverable by the next scroll.
-                        completion(.failure(error))
+                        self.finishOlderHistory(result: .failure(error))
                     }
                 }
             }
         }
     }
-    
+
     private func scheduleOlderHistoryTimeout(
         client: XMPPClient,
         queryID: String,
-        conversationJID: String,
-        completion: @escaping (Result<Bool, Error>) -> Void
+        conversationJID: String
     ) {
         olderHistoryTimeoutTask?.cancel()
         olderHistoryTimeoutTask = Task { @MainActor [weak self, weak client] in
@@ -1012,17 +1016,15 @@ final class XMPPService {
             else {
                 return
             }
-            
-            self.olderHistoryQueryID = nil
-            self.olderHistoryTimeoutTask = nil
+
             self.archiveStanzaInbox.cancel(queryID: queryID)
             self.eventHandler?(
                 .recoverableError(
                     "Не удалось загрузить более старую историю чата \(conversationJID): MAM не ответил за 15 секунд."
                 )
             )
-            completion(
-                .failure(
+            self.finishOlderHistory(
+                result: .failure(
                     LumaXMPPError.connection(
                         "MAM не ответил вовремя. Повторите прокрутку вверх."
                     )
@@ -1030,19 +1032,20 @@ final class XMPPService {
             )
         }
     }
-    
-    private func startPendingOlderHistoryIfPossible() {
-        guard !archiveSyncStarted,
-              activeMUCCatchup == nil,
-              let pending = pendingOlderHistoryRequest
-        else { return }
-        pendingOlderHistoryRequest = nil
-        performOlderHistoryRequest(
-            conversationJID: pending.conversationJID,
-            isGroup: pending.isGroup,
-            before: pending.before,
-            completion: pending.completion
-        )
+
+    /// Releases the in-flight interactive backward-history request exactly once.
+    /// Every terminal path (success, failure, timeout, disconnect, background)
+    /// funnels through here so the UI's "loading older history" spinner can
+    /// never be left stuck.
+    private func finishOlderHistory(result: Result<Bool, Error>) {
+        guard olderHistoryCompletion != nil else { return }
+        let completion = olderHistoryCompletion
+        olderHistoryCompletion = nil
+        olderHistoryQueryID = nil
+        olderHistoryTimeoutTask?.cancel()
+        olderHistoryTimeoutTask = nil
+        interactiveHistoryMutations = nil
+        completion?(result)
     }
 
     func sendRetraction(
@@ -1650,7 +1653,7 @@ final class XMPPService {
             }
             .store(in: &cancellables)
     }
-    
+
     private func deliverOrDelayDirect(_ message: Message, timestamp: Date) async {
         guard let client else { return }
         let archive = MAMArchiveKey.account(client.userBareJid.stringValue)
@@ -1766,9 +1769,13 @@ final class XMPPService {
                 security = .plaintext
                 fingerprint = nil
                 contentMessage = message
-            case .duplicateMessage:
-                return
             default:
+                // Includes `.duplicateMessage` (our own message without an
+                // encrypt-to-self key, or a key already consumed by a previous
+                // session): the body can no longer be recovered here. Still
+                // emit the message (as an undecryptable bubble) instead of
+                // dropping it, so history does not silently stop. Genuine
+                // duplicates are filtered later in AppModel by stanza/origin ID.
                 security = .decryptionFailed
                 fingerprint = nil
                 contentMessage = nil
@@ -1901,6 +1908,10 @@ final class XMPPService {
             ? visibleBody
             : Self.displayBody(kind: kind, filename: transportFilename ?? "Вложение")
 
+        // Live 1:1 messages carry their server archive UID in a <stanza-id>
+        // element (by = own bare JID). Surface it so the interactive MAM
+        // "before" cursor and dedup match the IDs the archive later returns.
+        let stanzaID = archiveID ?? Self.accountStanzaID(in: message, accountJID: ownJID)
         let id = message.originId ?? message.id ?? archiveID ?? UUID().uuidString
         emitMessage(
             MessageEnvelope(
@@ -1924,7 +1935,7 @@ final class XMPPService {
                 replyToJID: reply?.getAttribute("to"),
                 replyPreview: parsedReply.preview,
                 originID: message.originId,
-                stanzaID: archiveID,
+                stanzaID: stanzaID,
                 senderDisplayName: nil,
                 isGroupMessage: false,
                 isArchived: isArchived
@@ -2411,6 +2422,16 @@ final class XMPPService {
         }?.getAttribute("id")
     }
 
+    private static func accountStanzaID(in message: Message, accountJID: BareJID) -> String? {
+        message.children.first { child in
+            guard child.name == "stanza-id", child.xmlns == Self.stanzaIDNamespace else {
+                return false
+            }
+            guard let by = child.getAttribute("by")?.lowercased() else { return false }
+            return by == accountJID.stringValue.lowercased()
+        }?.getAttribute("id")
+    }
+
     private static func originalSenderJID(in message: Message) -> BareJID? {
         guard
             let address = message.firstChild(
@@ -2481,7 +2502,7 @@ final class XMPPService {
             isOutgoing: outgoing
         )
         if isArchived {
-            archivePassMutations.append(.retraction(envelope))
+            appendArchiveMutation(.retraction(envelope))
         } else {
             eventHandler?(.retraction(envelope))
         }
@@ -2492,7 +2513,7 @@ final class XMPPService {
         isArchived: Bool
     ) {
         if isArchived {
-            archivePassMutations.append(.reaction(envelope))
+            appendArchiveMutation(.reaction(envelope))
         } else {
             eventHandler?(.reaction(envelope))
         }
@@ -2500,9 +2521,21 @@ final class XMPPService {
 
     private func emitMessage(_ envelope: MessageEnvelope, isArchived: Bool) {
         if isArchived {
-            archivePassMutations.append(.message(envelope))
+            appendArchiveMutation(.message(envelope))
         } else {
             eventHandler?(.message(envelope))
+        }
+    }
+
+    /// Archived mutations normally belong to the active account/MUC catch-up
+    /// pass. While an interactive backward-history page is being applied, its
+    /// mutations are collected in a dedicated buffer so the two flows never
+    /// interleave and never steal each other's mutations.
+    private func appendArchiveMutation(_ mutation: ArchiveMutation) {
+        if interactiveHistoryMutations != nil {
+            interactiveHistoryMutations?.append(mutation)
+        } else {
+            archivePassMutations.append(mutation)
         }
     }
 
@@ -2730,7 +2763,8 @@ final class XMPPService {
         archiveStanzaBuffer.removeAll(keepingCapacity: true)
         archiveBufferOverflowed = false
         archiveRejectedSource = false
-        archiveStanzaInbox.cancel()
+        // Do NOT blanket-cancel the inbox here: an interactive backward-history
+        // query may be in flight and must keep its own query-ID-scoped buffer.
         // Show the visible "Синхронизация истории…" banner only for the
         // one-page bootstrap window. Incremental catch-up continues silently so
         // a large backlog never leaves the spinner visible for the whole pass.
@@ -2878,7 +2912,6 @@ final class XMPPService {
                 await self?.replayDelayedLive(for: archive)
             }
             startNextMUCCatchupIfPossible()
-            startPendingOlderHistoryIfPossible()
         }
         // MUC catch-up decodes into archivePassMutations just like the account
         // pass. Publish them once the room catch-up settles, otherwise group
@@ -3329,7 +3362,8 @@ final class XMPPService {
         archiveQueryTimeoutTask = nil
         archiveQueryCompletionTask?.cancel()
         archiveQueryCompletionTask = nil
-        archiveStanzaInbox.cancel()
+        // Do NOT blanket-cancel the inbox here: an interactive backward-history
+        // query may be in flight and must keep its own query-ID-scoped buffer.
         archiveActiveQueryID = nil
         archiveStanzaBuffer.removeAll(keepingCapacity: true)
         archiveBufferOverflowed = false
@@ -3345,7 +3379,6 @@ final class XMPPService {
         }
         setArchiveSyncIndicator(false)
         archiveSyncStarted = false
-        startPendingOlderHistoryIfPossible()
         archiveIsBootstrapQuery = false
         archiveHighWatermark = nil
         archiveHasCompletedPage = false
@@ -3435,14 +3468,8 @@ final class XMPPService {
 
     private func suspendArchiveSyncForDisconnect() {
         setArchiveSyncIndicator(false)
-        olderHistoryTimeoutTask?.cancel()
-        olderHistoryTimeoutTask = nil
-        olderHistoryQueryID = nil
+        finishOlderHistory(result: .failure(LumaXMPPError.notConnected))
         archiveStanzaInbox.cancel()
-        if let pending = pendingOlderHistoryRequest {
-            pendingOlderHistoryRequest = nil
-            pending.completion(.failure(LumaXMPPError.notConnected))
-        }
         guard let client else {
             archiveSyncStarted = false
 //            archiveStanzaInbox.cancel()
@@ -3485,6 +3512,10 @@ final class XMPPService {
 
     private func pauseArchiveSync(client: XMPPClient) {
         setArchiveSyncIndicator(false)
+        // An in-flight interactive history request must not survive into the
+        // background with a dangling spinner; finish it before the catch-up
+        // guard below, which may early-return when no catch-up is active.
+        finishOlderHistory(result: .failure(LumaXMPPError.notConnected))
         guard archiveSyncStarted, self.client === client else { return }
         archiveRetryTask?.cancel()
         archiveRetryTask = nil
@@ -3495,9 +3526,6 @@ final class XMPPService {
         archiveSyncRetryTask?.cancel()
         archiveSyncRetryTask = nil
         archiveStanzaInbox.cancel()
-        olderHistoryTimeoutTask?.cancel()
-        olderHistoryTimeoutTask = nil
-        olderHistoryQueryID = nil
         archiveResumeAfter = archiveSyncCheckpoint?.cursor
         archiveActiveQueryID = nil
         archiveSyncStarted = false

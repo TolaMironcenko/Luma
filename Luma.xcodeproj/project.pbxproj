@@ -47,6 +47,7 @@
 		28D758624032D813C607DE5B /* MediaSendActivityTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = A69C6820279A445E9CA59FB3 /* MediaSendActivityTracker.swift */; };
 		2C5BAAEF4EC7AAE5FE0FEEDB /* MediaViewerItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8F7B01C59E9667ADAFABBAC /* MediaViewerItem.swift */; };
 		2C963DA7FDA2A2BCA075507F /* CallSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6079CE75BAB995515A8D5460 /* CallSnapshot.swift */; };
+		2D32E57F5CE1BF2EAE078492 /* DeviceResource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 876CDF98063A4C948B00C7CE /* DeviceResource.swift */; };
 		2D83457A8857592E23289EF7 /* LumaApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8C051C2A7014E8B5E825477 /* LumaApp.swift */; };
 		2F44B4FDA9AF67EB24776A16 /* WatchViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = C35158C37C26CA9ACB6C9FFB /* WatchViews.swift */; };
 		30BE19F459FDDAD640F66C68 /* MessageReplyFallback.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DDD7A997EF0AF7DA9C3478B /* MessageReplyFallback.swift */; };
@@ -175,6 +176,7 @@
 		D63F32533880B0D715ECFC79 /* NotificationPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E25F876C75CC5FCDDCB5906 /* NotificationPolicy.swift */; };
 		D6D0A798487AE98AE03A579C /* NewGroupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99BE34DC082D19007241AA62 /* NewGroupView.swift */; };
 		D6ED224CC13439A99A388676 /* GeoLocation.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD13FA20B6C2CD8B6718BF86 /* GeoLocation.swift */; };
+		D7179E7F8127A702FC58D3D4 /* DeviceResource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 876CDF98063A4C948B00C7CE /* DeviceResource.swift */; };
 		D7CB4481F4F3B81D2C9EF5BD /* NewGroupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99BE34DC082D19007241AA62 /* NewGroupView.swift */; };
 		D80DC91DBAE924BE47EFBD6F /* MediaPickerSelectionPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1E6875B522254FFB5FA880E /* MediaPickerSelectionPolicy.swift */; };
 		DA77E8A49D2D091EC0975DD3 /* InlineVideoPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8C81B9255E9886FB86E0785 /* InlineVideoPlayer.swift */; };
@@ -310,6 +312,7 @@
 		7F5960729C94DC995374CFD6 /* ComposerRecordingGestureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerRecordingGestureTests.swift; sourceTree = "<group>"; };
 		81213335D275609C38056220 /* ForwardMessageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForwardMessageView.swift; sourceTree = "<group>"; };
 		83A5787450609B0C14093679 /* WatchSessionModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchSessionModel.swift; sourceTree = "<group>"; };
+		876CDF98063A4C948B00C7CE /* DeviceResource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceResource.swift; sourceTree = "<group>"; };
 		8D2294F0FE44B2268A0620BB /* PhotoAttachmentPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoAttachmentPreview.swift; sourceTree = "<group>"; };
 		96829BDC257FD8D61083DA4D /* VideoNoteRecordingLifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoNoteRecordingLifecycle.swift; sourceTree = "<group>"; };
 		99BE34DC082D19007241AA62 /* NewGroupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewGroupView.swift; sourceTree = "<group>"; };
@@ -420,6 +423,7 @@
 				13E35F7F0CB0243311FCDD61 /* ChatTimelineEntry.swift */,
 				1C3E51BB890F05FD02C71F6E /* ChatTypingPolicy.swift */,
 				7846C2EEE2551C6690A4FDC6 /* Conversation.swift */,
+				876CDF98063A4C948B00C7CE /* DeviceResource.swift */,
 				5D187FF75D77DB6CCC811600 /* EncryptionPreference.swift */,
 				BD13FA20B6C2CD8B6718BF86 /* GeoLocation.swift */,
 				278FC97C7F6D41B638436EA7 /* MediaMetadata.swift */,
@@ -775,6 +779,7 @@
 				1655A2B7ACF4003EF41A1AB8 /* ConversationRow.swift in Sources */,
 				64F4AD83D86B8900DE69F117 /* CredentialVault.swift in Sources */,
 				EE4DFDBA97562C53C53FBF51 /* CryptoKitAESGCMEngine.swift in Sources */,
+				2D32E57F5CE1BF2EAE078492 /* DeviceResource.swift in Sources */,
 				9CA60ADF5AEFB8CE70B25EE8 /* EncryptionDevicesView.swift in Sources */,
 				9393464C4C3BE5F9546FE8BB /* EncryptionPreference.swift in Sources */,
 				8629497F7160C95747886EE4 /* ForwardMessageView.swift in Sources */,
@@ -872,6 +877,7 @@
 				51AE33BE56ED4543014119D0 /* ConversationRow.swift in Sources */,
 				EE2BF07D86C00AB6358EA5AE /* CredentialVault.swift in Sources */,
 				E582A0424A63CA16DDA4E984 /* CryptoKitAESGCMEngine.swift in Sources */,
+				D7179E7F8127A702FC58D3D4 /* DeviceResource.swift in Sources */,
 				FCD330D04ED5B87E28883E58 /* EncryptionDevicesView.swift in Sources */,
 				A07ABE478F7F48C3FEDC22D5 /* EncryptionPreference.swift in Sources */,
 				25A9ADB0FF1496A4D3EF431D /* ForwardMessageView.swift in Sources */,

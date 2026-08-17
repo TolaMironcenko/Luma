@@ -334,27 +334,13 @@ struct ChatView: View {
                                 Color.clear
                                     .frame(height: 1)
                                     .accessibilityHidden(true)
-//                                    .onAppear {
-////                                        guard !model.isLoadingOlderHistory else { return }
-//                                        guard historyTopTriggerArmed,
-//                                              !model.isLoadingOlderHistory
-//                                        else {
-//                                            return
-//                                        }
-//                                        
-//                                        historyTopTriggerArmed = false
-//                                        historyLoadAnchorID = timelineEntries.first?.id
-//                                        model.loadOlderHistoryForSelectedConversation()
-//                                    }
-                                    .background {
-                                        GeometryReader { geometry in
-                                            Color.clear.preference(
-                                                key: TimelineTopYPreferenceKey.self,
-                                                value: geometry.frame(
-                                                    in: .named(Self.timelineCoordinateSpace)
-                                                ).minY
-                                            )
-                                        }
+                                    .onAppear {
+                                        guard historyTopTriggerArmed,
+                                              !model.isLoadingOlderHistory
+                                        else { return }
+                                        historyTopTriggerArmed = false
+                                        historyLoadAnchorID = timelineEntries.first?.id
+                                        model.loadOlderHistoryForSelectedConversation()
                                     }
                                     .onDisappear {
                                         historyTopTriggerArmed = true
@@ -374,6 +360,14 @@ struct ChatView: View {
                                     description: Text(emptyChatDescription)
                                 )
                                 .padding(.top, 80)
+                                .onAppear {
+                                    // Empty timeline has no scroll gesture, so load
+                                    // the first page directly when it appears.
+                                    guard model.hasMoreOlderHistory,
+                                          !model.isLoadingOlderHistory
+                                    else { return }
+                                    model.loadOlderHistoryForSelectedConversation()
+                                }
                             } else {
                                 ForEach(timelineEntries) { entry in
                                     let message = entry.message
@@ -441,22 +435,6 @@ struct ChatView: View {
                         )
                     }
 #endif
-                    .onPreferenceChange(TimelineTopYPreferenceKey.self) { topY in
-                        if topY > 24 {
-                            historyTopTriggerArmed = true
-                            return
-                        }
-                        guard hasCompletedInitialScroll,
-                              !timelineEntries.isEmpty,
-                              model.hasMoreOlderHistory,
-                              !model.isLoadingOlderHistory,
-                              historyTopTriggerArmed
-//                              topY <= 24
-                        else { return }
-                        historyTopTriggerArmed = false
-                        historyLoadAnchorID = timelineEntries.first?.id
-                        model.loadOlderHistoryForSelectedConversation()
-                    }
                     .task(id: timelineEntries.last?.id) {
                         await performInitialScrollAfterLayout(using: proxy)
                     }
@@ -1571,8 +1549,16 @@ struct ChatView: View {
     }
 
     private func performInitialScrollAfterLayout(using proxy: ScrollViewProxy) async {
-        guard !hasCompletedInitialScroll,
-              !model.selectedMessages.isEmpty else { return }
+        guard !hasCompletedInitialScroll else { return }
+        guard !model.selectedMessages.isEmpty else {
+            // Empty conversation: there is nothing to scroll to, so the
+            // scroll-to-top gesture can never fire. Load the first page of
+            // history directly so a newly-created or emptied chat still fills.
+            if model.hasMoreOlderHistory, !model.isLoadingOlderHistory {
+                model.loadOlderHistoryForSelectedConversation()
+            }
+            return
+        }
 
         // ScrollViewReader can receive its first command before a long
         // LazyVStack has published the bottom anchor. Yield once for layout,
@@ -1608,14 +1594,6 @@ struct ChatView: View {
 
 private struct TimelineBottomYPreferenceKey: PreferenceKey {
     static var defaultValue: CGFloat = 0
-
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
-    }
-}
-
-private struct TimelineTopYPreferenceKey: PreferenceKey {
-    static var defaultValue: CGFloat = .greatestFiniteMagnitude
 
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = nextValue()
