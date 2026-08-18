@@ -23,6 +23,7 @@ struct MessageBubble: View {
     let onDelete: () -> Void
     let onReplyTap: (String) -> Void
     let onReact: (String) -> Void
+    let onReactPicker: () -> Void
 
     @State private var replySwipeOffset: CGFloat = 0
     @State private var replySwipeArmed = false
@@ -56,11 +57,7 @@ struct MessageBubble: View {
         .contextMenu {
             if !isSelectionMode {
                 if message.canBeReactedTo {
-                    Menu {
-                        ForEach(MessageReactionPolicy.quickChoices, id: \.self) { emoji in
-                            Button(emoji) { onReact(emoji) }
-                        }
-                    } label: {
+                    Button(action: onReactPicker) {
                         Label("Реакция", systemImage: "face.smiling")
                     }
                 }

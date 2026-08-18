@@ -537,8 +537,12 @@ grep -q 'urn:xmpp:reactions:0' Sources/Shared/XMPP/XMPPService.swift || {
   echo "XEP-0444 capability advertisement is missing"
   exit 1
 }
-grep -q 'MessageReactionPolicy.quickChoices' Sources/Shared/UI/Components/MessageBubble.swift || {
-  echo "Message reaction UI is missing"
+grep -q 'onReactPicker' Sources/Shared/UI/Components/MessageBubble.swift || {
+  echo "Message reaction picker is missing"
+  exit 1
+}
+grep -q 'EmojiPickerView' Sources/Shared/UI/ChatView.swift || {
+  echo "The emoji picker is not wired into the chat"
   exit 1
 }
 grep -q 'ChatStateNotificationsModule' Sources/Shared/XMPP/XMPPService.swift || {

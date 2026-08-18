@@ -263,6 +263,9 @@ final class XMPPService {
     private let callEngine: LumaCallEngine
     private var client: XMPPClient?
     private var omemoStorage: LumaOMEMOStore?
+    private var connectionStatsModule: LumaConnectionStatsModule?
+    private var lastLoginDate: Date?
+    private var smacksSessionEstablishedDate: Date?
     private var cancellables: Set<AnyCancellable> = []
     private var account: AccountConfiguration?
     private var archiveSyncStarted = false
@@ -435,6 +438,12 @@ final class XMPPService {
 
         do {
             try await client.loginAndWait()
+            let now = Date()
+            lastLoginDate = now
+            let streamManagement = client.module(.streamManagement)
+            if streamManagement.ackEnabled || streamManagement.resumptionEnabled {
+                smacksSessionEstablishedDate = now
+            }
             eventHandler?(.connection(.connected))
             fetchAvatar(for: account.normalizedJID)
             startArchiveSyncIfAvailable()
@@ -493,6 +502,9 @@ final class XMPPService {
         roomRealJIDByNickname.removeAll()
         omemoConfiguredRoomJIDs.removeAll()
         knownChatStatePeers.removeAll()
+        connectionStatsModule = nil
+        lastLoginDate = nil
+        smacksSessionEstablishedDate = nil
         eventHandler?(.connection(.disconnected(reason: nil)))
     }
 
@@ -1354,6 +1366,131 @@ final class XMPPService {
                 ownFingerprint: omemoStorage?.ownFingerprint))
     }
 
+    /// Queries the server's capabilities to populate the "server information"
+    /// settings screen: XEP-0030 disco#info (server + account), XEP-0092
+    /// software version, conference (MUC) services via disco#items, and
+    /// STUN/TURN services via XEP-0215.
+    func fetchServerInformation() async throws -> ServerInformation {
+        guard let client, client.state == .connected(), let account else {
+            throw LumaXMPPError.notConnected
+        }
+        let disco = client.module(.disco)
+        let versionModule = client.module(.softwareVersion)
+        let serverDomain = account.domain ?? client.userBareJid.domain
+
+        // Discover features, software version, server components and external
+        // services in parallel. The version/components/services queries are
+        // best-effort: not every server implements those XEPs, so they degrade
+        // to nil instead of failing the whole screen.
+        async let serverInfo = disco.serverFeatures()
+        async let accountInfo = disco.accountFeatures()
+        async let software = try? versionModule.checkSoftwareVersion(
+            for: JID(serverDomain)
+        )
+        async let components = try? disco.serverComponents()
+        async let services = try? client.module(.externalServiceDiscovery)
+            .discover(from: nil, type: nil)
+
+        let server = try await serverInfo
+        let accountDisco = try await accountInfo
+        let version = await software
+        let componentItems = await components
+        let extServices = await services
+
+        // Resolve each server component to its disco identity. Keep conference
+        // (MUC) services, and also detect HTTP File Upload when it is announced
+        // on a component (e.g. upload.<domain>) rather than the main domain.
+        var conferenceServers: [ServerInformation.ConferenceServer] = []
+        var uploadOnComponent = false
+        if let componentItems {
+            for item in componentItems.items {
+                guard let info = try? await disco.info(for: item.jid) else { continue }
+                if info.features.contains("urn:xmpp:http:upload:0")
+                    || info.features.contains("http://jabber.org/protocol/httpupload")
+                {
+                    uploadOnComponent = true
+                }
+                for identity in info.identities where identity.category == "conference" {
+                    conferenceServers.append(
+                        ServerInformation.ConferenceServer(
+                            jid: item.jid.stringValue,
+                            name: identity.name,
+                            type: identity.type,
+                            category: identity.category
+                        )
+                    )
+                }
+            }
+        }
+
+        let externalServices = (extServices ?? []).filter {
+            ["stun", "turn", "stuns", "turns"].contains($0.type.lowercased())
+        }.map {
+            ServerInformation.ExternalService(
+                type: $0.type,
+                host: $0.host,
+                port: $0.port,
+                transport: $0.transport?.rawValue
+            )
+        }
+
+        // SASL mechanisms and Client State Indication are advertised in the raw
+        // stream <features>, not in disco#info, so read them from there.
+        let streamFeaturesElement = client.module(.streamFeatures).streamFeatures.element
+        let saslMechanisms = streamFeaturesElement?
+            .findChild(name: "mechanisms", xmlns: "urn:ietf:params:xml:ns:xmpp-sasl")?
+            .children
+            .filter { $0.name == "mechanism" }
+            .compactMap { $0.value } ?? []
+        let supportsCSI = streamFeaturesElement?
+            .findChild(name: "csi", xmlns: "urn:xmpp:csi:0") != nil
+        let supportsRosterVersioning = streamFeaturesElement?
+            .findChild(name: "ver", xmlns: "urn:xmpp:features:rosterver") != nil
+        let supportsRosterPreApproval = streamFeaturesElement?
+            .findChild(name: "sub", xmlns: "urn:xmpp:features:pre-approval") != nil
+
+        let uploadOnServer = server.features.contains("urn:xmpp:http:upload:0")
+            || server.features.contains("http://jabber.org/protocol/httpupload")
+        let supportsHTTPUpload = uploadOnServer || uploadOnComponent
+
+        let stats = connectionStatsModule?.snapshot
+            ?? LumaConnectionStatsModule.Snapshot(sent: 0, acknowledged: 0, received: 0)
+
+        return ServerInformation(
+            serverDomain: serverDomain,
+            software: ServerInformation.Software(
+                name: version?.name,
+                version: version?.version,
+                os: version?.os
+            ),
+            identities: server.identities.map {
+                ServerInformation.Identity(
+                    category: $0.category,
+                    type: $0.type,
+                    name: $0.name
+                )
+            },
+            serverFeatures: server.features,
+            accountFeatures: accountDisco.features,
+            conferenceServers: conferenceServers,
+            externalServices: externalServices,
+            connectionStats: ServerInformation.ConnectionStats(
+                lastLogin: lastLoginDate,
+                smacksSessionEstablished: smacksSessionEstablishedDate,
+                sent: stats.sent,
+                acknowledged: stats.acknowledged,
+                received: stats.received
+            ),
+            saslMethods: saslMechanisms,
+            supportsStreamManagement: client.module(.streamManagement).isAvailable,
+            supportsCarbons: client.module(.messageCarbons).isAvailable,
+            supportsClientState: supportsCSI,
+            supportsHTTPUpload: supportsHTTPUpload,
+            supportsRosterVersioning: supportsRosterVersioning,
+            supportsRosterPreApproval: supportsRosterPreApproval
+        )
+    }
+
     func addToRoster(jid: String, name: String?) {
         guard let client, client.state == .connected() else { return }
         client.module(.roster).addItem(
@@ -1414,6 +1551,11 @@ final class XMPPService {
     ) {
         _ = client.modulesManager.register(AuthModule())
         _ = client.modulesManager.register(StreamFeaturesModule())
+        // Registered before StreamManagementModule so it can observe the
+        // server's `<a h='N'>` acknowledgements for the stanza statistics.
+        connectionStatsModule = client.modulesManager.register(
+            LumaConnectionStatsModule()
+        )
         _ = client.modulesManager.register(StreamManagementModule())
         _ = client.modulesManager.register(SaslModule())
         _ = client.modulesManager.register(ResourceBinderModule())
@@ -1770,15 +1912,25 @@ final class XMPPService {
                 fingerprint = nil
                 contentMessage = message
             default:
-                // Includes `.duplicateMessage` (our own message without an
-                // encrypt-to-self key, or a key already consumed by a previous
-                // session): the body can no longer be recovered here. Still
-                // emit the message (as an undecryptable bubble) instead of
-                // dropping it, so history does not silently stop. Genuine
-                // duplicates are filtered later in AppModel by stanza/origin ID.
-                security = .decryptionFailed
-                fingerprint = nil
-                contentMessage = nil
+                // Some clients include a plaintext <body> fallback alongside the
+                // OMEMO <encrypted> payload. When decryption fails, prefer that
+                // fallback so a readable message is never shown as undecryptable.
+                if message.body?.isEmpty == false {
+                    security = .plaintext
+                    fingerprint = nil
+                    contentMessage = message
+                } else {
+                    // Includes `.duplicateMessage` (our own message without an
+                    // encrypt-to-self key, or a key already consumed by a
+                    // previous session): the body can no longer be recovered
+                    // here. Still emit the message (as an undecryptable bubble)
+                    // instead of dropping it, so history does not silently
+                    // stop. Genuine duplicates are filtered later in AppModel
+                    // by stanza/origin ID.
+                    security = .decryptionFailed
+                    fingerprint = nil
+                    contentMessage = nil
+                }
             }
         }
 
@@ -2032,9 +2184,15 @@ final class XMPPService {
                         )
                         return
                     }
-                    security = .decryptionFailed
-                    fingerprint = nil
-                    contentMessage = nil
+                    if message.body?.isEmpty == false {
+                        security = .plaintext
+                        fingerprint = nil
+                        contentMessage = message
+                    } else {
+                        security = .decryptionFailed
+                        fingerprint = nil
+                        contentMessage = nil
+                    }
                 }
             }
         } else if encrypted {

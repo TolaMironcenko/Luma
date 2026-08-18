@@ -9,6 +9,18 @@ import UniformTypeIdentifiers
 import UIKit
 #endif
 
+private enum EmojiPickerPresentation: Identifiable {
+    case reaction(ChatMessage)
+    case composer
+
+    var id: String {
+        switch self {
+        case .reaction(let message): return "reaction-\(message.id)"
+        case .composer: return "composer"
+        }
+    }
+}
+
 @MainActor
 struct ChatView: View {
     private static let bottomAnchorID = "luma-chat-timeline-bottom"
@@ -42,6 +54,7 @@ struct ChatView: View {
     @State private var selectedMessageIDs: Set<String> = []
     @State private var destructiveAction: MessageDestructiveAction?
     @State private var replyThreadSelection: ReplyThreadSelection?
+    @State private var emojiPickerPresentation: EmojiPickerPresentation?
     @State private var hasCompletedInitialScroll = false
     @State private var isNearTimelineBottom = true
     @State private var historyLoadAnchorID: String?
@@ -221,6 +234,11 @@ struct ChatView: View {
         .sheet(item: $forwardingSelection) { selection in
             ForwardMessageView(model: model, messages: selection.messages) {
                 clearMessageSelection()
+            }
+        }
+        .sheet(item: $emojiPickerPresentation) { presentation in
+            EmojiPickerView { emoji in
+                handleEmojiSelection(emoji, for: presentation)
             }
         }
         .alert(item: $destructiveAction) { action in
@@ -404,6 +422,9 @@ struct ChatView: View {
                                         },
                                         onReact: { emoji in
                                             Task { await model.toggleReaction(emoji, on: message) }
+                                        },
+                                        onReactPicker: {
+                                            emojiPickerPresentation = .reaction(message)
                                         }
                                     )
                                     .id(message.id)
@@ -608,11 +629,16 @@ struct ChatView: View {
             .submitLabel(.send)
             .onSubmit { sendDraft() }
 
-            Image(systemName: "face.smiling")
-                .font(.system(size: 20, weight: .regular))
-                .foregroundStyle(.secondary)
-                .padding(.bottom, 1)
-                .accessibilityHidden(true)
+            Button {
+                emojiPickerPresentation = .composer
+            } label: {
+                Image(systemName: "face.smiling")
+                    .font(.system(size: 20, weight: .regular))
+                    .foregroundStyle(.secondary)
+                    .padding(.bottom, 1)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Эмодзи")
         }
         .padding(.leading, 14)
         .padding(.trailing, 12)
@@ -782,6 +808,7 @@ struct ChatView: View {
         }
         .animation(.easeInOut(duration: 0.16), value: model.typingText(for: liveConversation))
         .accessibilityElement(children: .combine)
+        .padding()
     }
 
     private var canSendToConversation: Bool {
@@ -1383,6 +1410,18 @@ struct ChatView: View {
         editingMessageID = message.id
         draft = message.body
         isComposerFocused = true
+    }
+
+    private func handleEmojiSelection(
+        _ emoji: String,
+        for presentation: EmojiPickerPresentation
+    ) {
+        switch presentation {
+        case .reaction(let message):
+            Task { await model.toggleReaction(emoji, on: message) }
+        case .composer:
+            draft.append(emoji)
+        }
     }
 
     private func beginMessageSelection(with message: ChatMessage) {

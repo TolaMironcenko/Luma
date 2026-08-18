@@ -58,6 +58,11 @@ struct SettingsView: View {
                         }
                     }
                     LabeledContent("История MAM", value: model.isArchiveSyncing ? "Синхронизация" : "Готово")
+                    NavigationLink {
+                        ServerInfoView(model: model)
+                    } label: {
+                        Label("Информация о сервере", systemImage: "server.rack")
+                    }
                 }
 
                 Section("Шифрование") {

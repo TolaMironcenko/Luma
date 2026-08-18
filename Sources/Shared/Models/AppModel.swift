@@ -41,6 +41,7 @@ final class AppModel: ObservableObject {
     @Published var selectedConversationID: String?
     @Published private(set) var isOMEMOReady = false
     @Published private(set) var ownFingerprint: String?
+    @Published private(set) var serverInformation: ServerInformation?
     @Published private(set) var isArchiveSyncing = false
     @Published private(set) var isLoadingOlderHistory = false
     @Published private(set) var hasMoreOlderHistory = true
@@ -1621,6 +1622,15 @@ final class AppModel: ObservableObject {
         objectWillChange.send()
     }
 
+    func refreshServerInformation() async {
+        do {
+            serverInformation = try await xmpp.fetchServerInformation()
+        } catch {
+            // The screen shows its own error state; keep any previously loaded
+            // snapshot rather than clearing it on a transient refresh failure.
+        }
+    }
+
     func clearError() {
         errorMessage = nil
     }
@@ -2520,6 +2530,25 @@ final class AppModel: ObservableObject {
                 merged.editedAt = editedAt
                 merged.security = previous.security
                 merged.encryptionFingerprint = previous.encryptionFingerprint
+            }
+            if message.security == .decryptionFailed,
+               previous.security != .decryptionFailed,
+               !previous.body.isEmpty
+            {
+                // Our own outgoing message was rendered optimistically with the
+                // text the user typed. Its server echo (carbon or MAM) cannot
+                // be decrypted back (no encrypt-to-self key, or a consumed
+                // session), so keep the original content instead of replacing
+                // it with a "failed to decrypt" placeholder.
+                merged.body = previous.body
+                merged.security = previous.security
+                merged.encryptionFingerprint = previous.encryptionFingerprint
+                merged.kind = previous.kind
+                merged.remoteAttachmentURL = previous.remoteAttachmentURL
+                merged.localFilename = previous.localFilename
+                merged.mimeType = previous.mimeType
+                merged.duration = previous.duration
+                merged.byteCount = previous.byteCount
             }
             messages[index] = merged
             if let stanzaID = merged.stanzaID {
