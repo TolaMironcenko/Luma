@@ -44,9 +44,10 @@ targets:
     sources:
       - path: Sources/App
       - path: Sources/Shared
-    resources:
       - path: Resources/Shared.xcassets
+        buildPhase: resources
       - path: Resources/AppAssets.xcassets
+        buildPhase: resources
     dependencies:
       - package: Martin
       - package: MartinOMEMO
@@ -79,6 +80,7 @@ targets:
         PRODUCT_NAME: Luma
         TARGETED_DEVICE_FAMILY: "1,2"
         SUPPORTS_MACCATALYST: false
+        DEVELOPMENT_TEAM: K3AS449A74
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS: true
@@ -91,9 +93,10 @@ targets:
     sources:
       - path: Sources/App
       - path: Sources/Shared
-    resources:
       - path: Resources/Shared.xcassets
+        buildPhase: resources
       - path: Resources/AppAssets.xcassets
+        buildPhase: resources
     dependencies:
       - package: Martin
       - package: MartinOMEMO
@@ -124,6 +127,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.luma.chat.macos
         PRODUCT_NAME: Luma
+        DEVELOPMENT_TEAM: K3AS449A74
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS: true
@@ -139,9 +143,10 @@ targets:
     deploymentTarget: "10.0"
     sources:
       - path: Sources/Watch
-    resources:
       - path: Resources/Shared.xcassets
+        buildPhase: resources
       - path: Resources/AppAssets.xcassets
+        buildPhase: resources
     info:
       path: Config/LumaWatch-Info.plist
       properties:
@@ -161,6 +166,7 @@ targets:
         PRODUCT_NAME: LumaWatch
         GENERATE_INFOPLIST_FILE: NO
         TARGETED_DEVICE_FAMILY: "4"
+        DEVELOPMENT_TEAM: K3AS449A74
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS: true
