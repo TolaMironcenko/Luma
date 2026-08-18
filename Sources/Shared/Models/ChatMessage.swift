@@ -1,25 +1,27 @@
 import Foundation
+import SwiftData
 
-struct ChatMessage: Codable, Identifiable, Hashable, Sendable {
-    enum Direction: String, Codable, Sendable {
+@Model
+final class ChatMessage {
+    enum Direction: String, Codable {
         case incoming
         case outgoing
     }
 
-    enum Delivery: String, Codable, Sendable {
+    enum Delivery: String, Codable {
         case sending
         case sent
         case delivered
         case failed
     }
 
-    enum Security: String, Codable, Sendable {
+    enum Security: String, Codable {
         case omemo
         case plaintext
         case decryptionFailed
     }
 
-    enum Kind: String, Codable, Sendable {
+    enum Kind: String, Codable {
         case text
         case attachment
         case photo
@@ -40,7 +42,7 @@ struct ChatMessage: Codable, Identifiable, Hashable, Sendable {
         }
     }
 
-    let id: String
+    @Attribute(.unique) var clientID: String
     var conversationID: String
     var senderJID: String
     var body: String
@@ -67,6 +69,8 @@ struct ChatMessage: Codable, Identifiable, Hashable, Sendable {
     var isGroupMessage: Bool
     var callHistory: CallHistoryMetadata?
     var reactions: [MessageReaction]
+
+    var conversation: Conversation?
 
     init(
         id: String = UUID().uuidString,
@@ -97,7 +101,7 @@ struct ChatMessage: Codable, Identifiable, Hashable, Sendable {
         callHistory: CallHistoryMetadata? = nil,
         reactions: [MessageReaction] = []
     ) {
-        self.id = id
+        self.clientID = id
         self.conversationID = conversationID.lowercased()
         self.senderJID = Self.normalizedSenderJID(senderJID)
         self.body = body
@@ -124,67 +128,6 @@ struct ChatMessage: Codable, Identifiable, Hashable, Sendable {
         self.isGroupMessage = isGroupMessage
         self.callHistory = callHistory
         self.reactions = reactions
-    }
-
-    private enum CodingKeys: String, CodingKey {
-        case id
-        case conversationID
-        case senderJID
-        case body
-        case timestamp
-        case direction
-        case delivery
-        case security
-        case kind
-        case remoteAttachmentURL
-        case localFilename
-        case mimeType
-        case duration
-        case byteCount
-        case encryptionFingerprint
-        case editedAt
-        case replyToID
-        case replyToJID
-        case replyPreview
-        case forwardedFrom
-        case retractedAt
-        case originID
-        case stanzaID
-        case senderDisplayName
-        case isGroupMessage
-        case callHistory
-        case reactions
-    }
-
-    init(from decoder: Decoder) throws {
-        let values = try decoder.container(keyedBy: CodingKeys.self)
-        id = try values.decode(String.self, forKey: .id)
-        conversationID = try values.decode(String.self, forKey: .conversationID).lowercased()
-        senderJID = Self.normalizedSenderJID(try values.decode(String.self, forKey: .senderJID))
-        body = try values.decode(String.self, forKey: .body)
-        timestamp = try values.decode(Date.self, forKey: .timestamp)
-        direction = try values.decode(Direction.self, forKey: .direction)
-        delivery = try values.decode(Delivery.self, forKey: .delivery)
-        security = try values.decode(Security.self, forKey: .security)
-        kind = try values.decode(Kind.self, forKey: .kind)
-        remoteAttachmentURL = try values.decodeIfPresent(String.self, forKey: .remoteAttachmentURL)
-        localFilename = try values.decodeIfPresent(String.self, forKey: .localFilename)
-        mimeType = try values.decodeIfPresent(String.self, forKey: .mimeType)
-        duration = try values.decodeIfPresent(TimeInterval.self, forKey: .duration)
-        byteCount = try values.decodeIfPresent(Int.self, forKey: .byteCount)
-        encryptionFingerprint = try values.decodeIfPresent(String.self, forKey: .encryptionFingerprint)
-        editedAt = try values.decodeIfPresent(Date.self, forKey: .editedAt)
-        replyToID = try values.decodeIfPresent(String.self, forKey: .replyToID)
-        replyToJID = try values.decodeIfPresent(String.self, forKey: .replyToJID).map(Self.normalizedSenderJID)
-        replyPreview = try values.decodeIfPresent(String.self, forKey: .replyPreview)
-        forwardedFrom = try values.decodeIfPresent(String.self, forKey: .forwardedFrom)
-        retractedAt = try values.decodeIfPresent(Date.self, forKey: .retractedAt)
-        originID = try values.decodeIfPresent(String.self, forKey: .originID)
-        stanzaID = try values.decodeIfPresent(String.self, forKey: .stanzaID)
-        senderDisplayName = try values.decodeIfPresent(String.self, forKey: .senderDisplayName)
-        isGroupMessage = try values.decodeIfPresent(Bool.self, forKey: .isGroupMessage) ?? false
-        callHistory = try values.decodeIfPresent(CallHistoryMetadata.self, forKey: .callHistory)
-        reactions = try values.decodeIfPresent([MessageReaction].self, forKey: .reactions) ?? []
     }
 
     var canBeEdited: Bool {
@@ -218,7 +161,7 @@ struct ChatMessage: Codable, Identifiable, Hashable, Sendable {
     }
 
     var replyIdentifier: String? {
-        isGroupMessage ? stanzaID : id
+        isGroupMessage ? stanzaID : clientID
     }
 
     var quotePreview: String {

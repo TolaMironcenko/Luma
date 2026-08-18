@@ -82,7 +82,7 @@ final class PhoneWatchBridge: NSObject, WCSessionDelegate {
         messages: [ChatMessage]
     ) -> Data? {
         let visibleConversations = Array(conversations.prefix(20))
-        let visibleConversationIDs = Set(visibleConversations.map(\.id))
+        let visibleConversationIDs = Set(visibleConversations.map(\.jid))
         var recentMessagesByConversation: [String: [ChatMessage]] = [:]
 
         // Keep a bounded, chronologically sorted window. MAM can append an old
@@ -103,10 +103,10 @@ final class PhoneWatchBridge: NSObject, WCSessionDelegate {
                 jid: conversation.jid,
                 name: conversation.displayName,
                 unread: conversation.unreadCount,
-                messages: (recentMessagesByConversation[conversation.id] ?? [])
+                messages: (recentMessagesByConversation[conversation.jid] ?? [])
                     .map {
                         PhoneWatchSnapshot.Message(
-                            id: $0.id,
+                            id: $0.clientID,
                             body: $0.previewText,
                             timestamp: $0.timestamp,
                             outgoing: $0.direction == .outgoing,
@@ -128,7 +128,7 @@ final class PhoneWatchBridge: NSObject, WCSessionDelegate {
             let middle = lowerBound + (upperBound - lowerBound) / 2
             let existing = sortedMessages[middle]
             let existingComesFirst = existing.timestamp < message.timestamp
-                || (existing.timestamp == message.timestamp && existing.id < message.id)
+                || (existing.timestamp == message.timestamp && existing.clientID < message.clientID)
             if existingComesFirst {
                 lowerBound = middle + 1
             } else {

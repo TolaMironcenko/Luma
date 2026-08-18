@@ -253,8 +253,8 @@ grep -q 'decodeSliceSize = 8' Sources/Shared/Models/ArchiveMessageBatchPolicy.sw
   echo "MAM decoding must stay batched in small per-slice groups"
   exit 1
 }
-grep -q 'lastSuccessfulMAMCursor' Sources/Shared/Persistence/ChatArchive.swift || {
-  echo "The durable archive snapshot must persist the XEP-0313 UID cursor"
+grep -q 'lastSuccessfulMAMCursor' Sources/Shared/Persistence/ArchiveStore.swift || {
+  echo "The durable archive store must persist the XEP-0313 UID cursor"
   exit 1
 }
 grep -q 'ArchiveSyncCursorPolicy.requestPosition' Sources/Shared/XMPP/XMPPService.swift || {

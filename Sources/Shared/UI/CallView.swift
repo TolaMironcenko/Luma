@@ -8,7 +8,7 @@ struct CallView: View {
     let call: CallSnapshot
 
     private var conversation: Conversation {
-        model.conversations.first(where: { $0.id == call.peerJID.lowercased() })
+        model.conversations.first(where: { $0.jid == call.peerJID.lowercased() })
             ?? Conversation(jid: call.peerJID, displayName: model.displayName(for: call.peerJID))
     }
 

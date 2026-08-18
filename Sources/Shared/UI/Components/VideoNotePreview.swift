@@ -82,7 +82,7 @@ struct VideoNotePreview: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .lumaExclusiveMediaPlayback)) { notification in
             guard let activeID = notification.object as? String,
-                  activeID != message.id else { return }
+                  activeID != message.clientID else { return }
             player?.pause()
             isPlaying = false
         }
@@ -146,7 +146,7 @@ struct VideoNotePreview: View {
             model.audioPlayback.stop()
             NotificationCenter.default.post(
                 name: .lumaExclusiveMediaPlayback,
-                object: message.id
+                object: message.clientID
             )
             player.play()
         }

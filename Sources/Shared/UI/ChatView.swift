@@ -15,7 +15,7 @@ private enum EmojiPickerPresentation: Identifiable {
 
     var id: String {
         switch self {
-        case .reaction(let message): return "reaction-\(message.id)"
+        case .reaction(let message): return "reaction-\(message.clientID)"
         case .composer: return "composer"
         }
     }
@@ -254,7 +254,7 @@ struct ChatView: View {
         .overlay {
             replyThreadOverlay
         }
-        .onChange(of: conversation.id) { _, _ in
+        .onChange(of: conversation.jid) { _, _ in
             hasCompletedInitialScroll = false
             isNearTimelineBottom = true
             historyLoadAnchorID = nil
@@ -284,7 +284,7 @@ struct ChatView: View {
     @ViewBuilder
     private var replyThreadOverlay: some View {
         if let selection = replyThreadSelection,
-           let root = model.message(withID: selection.rootID, in: conversation.id) {
+           let root = model.message(withID: selection.rootID, in: conversation.jid) {
             ReplyThreadOverlay(
                 model: model,
                 rootMessage: root,
@@ -332,7 +332,7 @@ struct ChatView: View {
     }
 
     private var selectedTimelineMessages: [ChatMessage] {
-        model.selectedMessages.filter { selectedMessageIDs.contains($0.id) }
+        model.selectedMessages.filter { selectedMessageIDs.contains($0.clientID) }
     }
 
     private var isSelectingMessages: Bool {
@@ -396,7 +396,7 @@ struct ChatView: View {
                                         model: model,
                                         message: message,
                                         isSelectionMode: isSelectingMessages,
-                                        isSelected: selectedMessageIDs.contains(message.id),
+                                        isSelected: selectedMessageIDs.contains(message.clientID),
                                         onAttachmentTap: {
                                             Task { await model.previewAttachment(message) }
                                         },
@@ -417,7 +417,7 @@ struct ChatView: View {
                                         onReplyTap: { targetID in
                                             presentReplyThread(
                                                 rootID: targetID,
-                                                selectedReplyID: message.id
+                                                selectedReplyID: message.clientID
                                             )
                                         },
                                         onReact: { emoji in
@@ -427,7 +427,7 @@ struct ChatView: View {
                                             emojiPickerPresentation = .reaction(message)
                                         }
                                     )
-                                    .id(message.id)
+                                    .id(message.clientID)
                                 }
                             }
                         }
@@ -435,7 +435,7 @@ struct ChatView: View {
 
                         timelineBottomSentinel
 #if os(iOS)
-                        ChatScrollMetricsObserver(identity: conversation.id) { isNearBottom in
+                        ChatScrollMetricsObserver(identity: conversation.jid) { isNearBottom in
                             guard isNearTimelineBottom != isNearBottom else { return }
                             isNearTimelineBottom = isNearBottom
                         }
@@ -766,13 +766,13 @@ struct ChatView: View {
 
     private var editingMessage: ChatMessage? {
         guard let editingMessageID else { return nil }
-        return model.selectedMessages.first { $0.id == editingMessageID }
+        return model.selectedMessages.first { $0.clientID == editingMessageID }
     }
 
     private var replyingToMessage: ChatMessage? {
         guard let replyingToMessageID else { return nil }
         return model.selectedMessages.first {
-            $0.id == replyingToMessageID && $0.canBeRepliedTo
+            $0.clientID == replyingToMessageID && $0.canBeRepliedTo
         }
     }
 
@@ -790,7 +790,7 @@ struct ChatView: View {
     }
 
     private var liveConversation: Conversation {
-        model.conversations.first(where: { $0.id == conversation.id }) ?? conversation
+        model.conversations.first(where: { $0.jid == conversation.jid }) ?? conversation
     }
 
     private var chatNavigationTitle: some View {
@@ -1212,7 +1212,7 @@ struct ChatView: View {
     }
 
     private func presentReplyThread(rootID: String, selectedReplyID: String) {
-        guard model.message(withID: rootID, in: conversation.id) != nil else {
+        guard model.message(withID: rootID, in: conversation.jid) != nil else {
             model.errorMessage = "Исходное сообщение ещё не загружено в локальную историю."
             return
         }
@@ -1234,7 +1234,7 @@ struct ChatView: View {
         for root: ChatMessage,
         selectedReplyID: String
     ) -> [ChatMessage] {
-        var sourceIdentifiers: Set<String> = [root.id]
+        var sourceIdentifiers: Set<String> = [root.clientID]
         if let stanzaID = root.stanzaID { sourceIdentifiers.insert(stanzaID) }
         if let replyIdentifier = root.replyIdentifier {
             sourceIdentifiers.insert(replyIdentifier)
@@ -1244,12 +1244,12 @@ struct ChatView: View {
             guard let replyToID = candidate.replyToID else { return false }
             return sourceIdentifiers.contains(replyToID)
         }
-        if !replies.contains(where: { $0.id == selectedReplyID }),
-           let selected = model.message(withID: selectedReplyID, in: conversation.id) {
+        if !replies.contains(where: { $0.clientID == selectedReplyID }),
+           let selected = model.message(withID: selectedReplyID, in: conversation.jid) {
             replies.append(selected)
         }
         return replies.sorted { lhs, rhs in
-            if lhs.timestamp == rhs.timestamp { return lhs.id < rhs.id }
+            if lhs.timestamp == rhs.timestamp { return lhs.clientID < rhs.clientID }
             return lhs.timestamp < rhs.timestamp
         }
     }
@@ -1407,7 +1407,7 @@ struct ChatView: View {
         guard message.canBeEdited else { return }
         cancelComposerRecording(feedback: false)
         replyingToMessageID = nil
-        editingMessageID = message.id
+        editingMessageID = message.clientID
         draft = message.body
         isComposerFocused = true
     }
@@ -1429,14 +1429,14 @@ struct ChatView: View {
         dismissKeyboard()
         if editingMessageID != nil { cancelEditing() }
         cancelReplying()
-        selectedMessageIDs.insert(message.id)
+        selectedMessageIDs.insert(message.clientID)
     }
 
     private func toggleMessageSelection(_ message: ChatMessage) {
-        if selectedMessageIDs.contains(message.id) {
-            selectedMessageIDs.remove(message.id)
+        if selectedMessageIDs.contains(message.clientID) {
+            selectedMessageIDs.remove(message.clientID)
         } else {
-            selectedMessageIDs.insert(message.id)
+            selectedMessageIDs.insert(message.clientID)
         }
     }
 
@@ -1457,7 +1457,7 @@ struct ChatView: View {
             editingMessageID = nil
             draft = ""
         }
-        replyingToMessageID = message.id
+        replyingToMessageID = message.clientID
         isComposerFocused = true
     }
 
@@ -1526,7 +1526,7 @@ struct ChatView: View {
     }
 
     private func perform(_ action: MessageDestructiveAction) {
-        let ids = Set(action.messages.map(\.id))
+        let ids = Set(action.messages.map(\.clientID))
         if let editingMessageID, ids.contains(editingMessageID) {
             cancelEditing()
         }
@@ -1536,11 +1536,11 @@ struct ChatView: View {
         selectedMessageIDs.subtract(ids)
         switch action.kind {
         case .localDelete:
-            model.deleteMessagesLocally(ids: ids, in: conversation.id)
+            model.deleteMessagesLocally(ids: ids, in: conversation.jid)
         case .retract:
             Task {
                 for message in action.messages where message.canBeRetracted {
-                    await model.retractMessage(id: message.id)
+                    await model.retractMessage(id: message.clientID)
                 }
             }
         }
@@ -2161,7 +2161,7 @@ private struct MessageDestructiveAction: Identifiable {
     let messages: [ChatMessage]
 
     var id: String {
-        let messageIDs = messages.map(\.id).sorted().joined(separator: "-")
+        let messageIDs = messages.map(\.clientID).sorted().joined(separator: "-")
         return "\(kind == .localDelete ? "local" : "retract")-\(messageIDs)"
     }
 

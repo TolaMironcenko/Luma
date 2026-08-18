@@ -112,10 +112,10 @@ struct ReplyThreadOverlay: View {
                     model: model,
                     message: reply,
                     maximumBubbleWidth: maximumBubbleWidth,
-                    isSelected: reply.id == selectedReplyID,
-                    showsDeliveryStatus: reply.id == selectedReplyID
+                    isSelected: reply.clientID == selectedReplyID,
+                    showsDeliveryStatus: reply.clientID == selectedReplyID
                 )
-                .id(reply.id)
+                .id(reply.clientID)
             }
         }
         .padding(.leading, showsBracket && bracketOnLeadingEdge ? 43 : 0)

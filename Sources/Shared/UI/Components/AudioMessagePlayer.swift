@@ -129,7 +129,7 @@ struct AudioMessagePlayer: View {
     }
 
     private var isCurrent: Bool {
-        playback.currentMessageID == message.id
+        playback.currentMessageID == message.clientID
     }
 
     private var isPlaying: Bool {
@@ -194,7 +194,7 @@ struct AudioMessagePlayer: View {
                     return
                 }
                 playback.toggle(
-                    messageID: message.id,
+                    messageID: message.clientID,
                     url: downloadedURL,
                     durationHint: message.duration,
                     isVoice: message.kind == .voice
@@ -203,7 +203,7 @@ struct AudioMessagePlayer: View {
             return
         }
         playback.toggle(
-            messageID: message.id,
+            messageID: message.clientID,
             url: localURL,
             durationHint: message.duration,
             isVoice: message.kind == .voice
@@ -213,7 +213,7 @@ struct AudioMessagePlayer: View {
     private func seek(_ fraction: Double) {
         guard let localURL else { return }
         playback.seek(
-            messageID: message.id,
+            messageID: message.clientID,
             url: localURL,
             durationHint: message.duration,
             isVoice: message.kind == .voice,

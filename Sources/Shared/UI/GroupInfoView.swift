@@ -92,7 +92,7 @@ struct GroupInfoView: View {
     }
 
     private var liveConversation: Conversation {
-        model.conversations.first(where: { $0.id == conversation.id }) ?? conversation
+        model.conversations.first(where: { $0.jid == conversation.jid }) ?? conversation
     }
 
     private var parsedInvitees: [String] {

@@ -28,7 +28,7 @@ struct MainChatView: View {
 
     private var filteredRosterContacts: [Conversation] {
         model.conversations
-            .filter { !$0.isGroup && model.rosterContactJIDs.contains($0.id) }
+            .filter { !$0.isGroup && model.rosterContactJIDs.contains($0.jid) }
             .filter { searchText.isEmpty || matchesSearch($0) }
             .sorted(by: contactSort)
     }
@@ -91,7 +91,7 @@ struct MainChatView: View {
         } detail: {
             if let conversation = model.selectedConversation {
                 ChatView(model: model, conversation: conversation)
-                    .id(conversation.id)
+                    .id(conversation.jid)
             } else {
                 WelcomeDetailView()
             }
@@ -120,7 +120,7 @@ struct MainChatView: View {
                     imageData: model.avatarData(for: conversation.jid),
                     isEncrypted: model.encryptionEnabled(for: conversation.jid)
                 )
-                .tag(conversation.id)
+                .tag(conversation.jid)
                 .listRowInsets(EdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 12))
             }
         }
@@ -149,7 +149,7 @@ struct MainChatView: View {
                             conversation: conversation,
                             imageData: model.avatarData(for: conversation.jid)
                         )
-                        .tag(conversation.id)
+                        .tag(conversation.jid)
                         .listRowInsets(EdgeInsets(top: 7, leading: 12, bottom: 7, trailing: 12))
                     }
                 } header: {
@@ -164,7 +164,7 @@ struct MainChatView: View {
                             conversation: conversation,
                             imageData: model.avatarData(for: conversation.jid)
                         )
-                        .tag(conversation.id)
+                        .tag(conversation.jid)
                         .listRowInsets(EdgeInsets(top: 7, leading: 12, bottom: 7, trailing: 12))
                     }
                 } header: {
