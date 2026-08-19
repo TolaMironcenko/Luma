@@ -83,7 +83,7 @@ struct ChatView: View {
                 }
         }
         .background(Color.secondary.opacity(0.035))
-        .navigationTitle(conversation.displayName)
+        .navigationTitle("")
 #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
 #endif
@@ -100,36 +100,43 @@ struct ChatView: View {
                         .font(.subheadline.weight(.semibold))
                 }
             } else {
-                ToolbarItemGroup(placement: .primaryAction) {
-                    if !conversation.isGroup {
-                        Button {
-                            Task { await model.startCall(to: conversation.jid, withVideo: false) }
-                        } label: {
-                            Image(systemName: "phone")
+                ToolbarItem(placement: .primaryAction) {
+                    HStack {
+                        AvatarView(
+                            conversation: liveConversation,
+                            imageData: model.avatarData(for: conversation.jid),
+                            size: 28
+                        ).padding(4)
+                        if !conversation.isGroup {
+                            Menu {
+                                Button {
+                                    Task { await model.startCall(to: conversation.jid, withVideo: false) }
+                                } label: {
+                                    Label("Аудиозвонок", systemImage: "phone")
+                                }
+                                .disabled(!canStartCall)
+                                .help("Аудиозвонок")
+                                
+                                Button {
+                                    Task { await model.startCall(to: conversation.jid, withVideo: true) }
+                                } label: {
+                                    Label("Видеозвонок", systemImage: "video")
+                                }
+                                .disabled(!canStartCall)
+                                .help("Видеозвонок")
+                                encryptionMenu
+                            } label: {
+                                Image(systemName: "ellipsis.circle")
+                            }
+                            .disabled(!canStartCall)
                         }
-                        .disabled(!canStartCall)
-                        .help("Аудиозвонок")
-
-                        Button {
-                            Task { await model.startCall(to: conversation.jid, withVideo: true) }
-                        } label: {
-                            Image(systemName: "video")
+                        if conversation.isGroup {
+                            Button { showingGroupInfo = true } label: {
+                                Image(systemName: "person.3")
+                            }
+                            .help("Информация о группе")
                         }
-                        .disabled(!canStartCall)
-                        .help("Видеозвонок")
                     }
-                    AvatarView(
-                        conversation: liveConversation,
-                        imageData: model.avatarData(for: conversation.jid),
-                        size: 28
-                    )
-                    if conversation.isGroup {
-                        Button { showingGroupInfo = true } label: {
-                            Image(systemName: "person.3")
-                        }
-                        .help("Информация о группе")
-                    }
-                    encryptionMenu
                 }
             }
         }
@@ -321,8 +328,7 @@ struct ChatView: View {
                 }
             }
         } label: {
-            Image(systemName: encryptionIcon)
-                .foregroundStyle(encryptionEnabled ? Color.primary : Color.orange)
+            Label("Шифрование", systemImage: encryptionIcon)
         }
         .help(encryptionEnabled ? "OMEMO включено" : "Сообщения отправляются без OMEMO")
     }

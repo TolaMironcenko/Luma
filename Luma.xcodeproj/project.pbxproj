@@ -317,7 +317,7 @@
 		6079CE75BAB995515A8D5460 /* CallSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallSnapshot.swift; sourceTree = "<group>"; };
 		60A97545E6E481D45E0BB20F /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
 		61380B78824FDB98A933C7E9 /* ArchiveSyncRecoveryPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveSyncRecoveryPolicyTests.swift; sourceTree = "<group>"; };
-		6317FAA29F22A3EA8450208F /* LumaTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = LumaTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		6317FAA29F22A3EA8450208F /* LumaTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = LumaTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		6773F87EE60F91BBDCA4B1F5 /* GroupConversationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupConversationTests.swift; sourceTree = "<group>"; };
 		6DCB924748780145A707D890 /* MediaViewerDismissGestureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaViewerDismissGestureTests.swift; sourceTree = "<group>"; };
 		6DDD7A997EF0AF7DA9C3478B /* MessageReplyFallback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageReplyFallback.swift; sourceTree = "<group>"; };
@@ -382,12 +382,12 @@
 		D8C81B9255E9886FB86E0785 /* InlineVideoPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InlineVideoPlayer.swift; sourceTree = "<group>"; };
 		D9BBE412EAF54DFE968B2E54 /* ArchiveSyncCheckpoint.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveSyncCheckpoint.swift; sourceTree = "<group>"; };
 		D9FCE089ABBF05EF9F55D451 /* VideoNoteRecordingLifecycleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoNoteRecordingLifecycleTests.swift; sourceTree = "<group>"; };
-		DF8C531E464C9C4EDE2648C6 /* Luma.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Luma.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		DF8C531E464C9C4EDE2648C6 /* Luma.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Luma.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		E619B2C85B0DD2E80653D6D3 /* VideoNoteRecordingCompletionPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoNoteRecordingCompletionPolicy.swift; sourceTree = "<group>"; };
 		E6A5C32B4DACD56DA733A0DB /* ServerInformation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerInformation.swift; sourceTree = "<group>"; };
 		E9F226A1F8D82B39630F9CEB /* LumaRoomStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LumaRoomStore.swift; sourceTree = "<group>"; };
 		EA1D94FE541121DAE9DCE3B0 /* LegacyArchiveImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegacyArchiveImporter.swift; sourceTree = "<group>"; };
-		EA54340DD785335237158BEF /* LumaMac.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LumaMac.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		EA54340DD785335237158BEF /* Luma.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Luma.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F0A35C9A7B52458996513382 /* WatchVoiceRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchVoiceRecorder.swift; sourceTree = "<group>"; };
 		F207C1B20DE3780F1754F81D /* ConnectionBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionBanner.swift; sourceTree = "<group>"; };
 		F26F91180E43DE9C135B68C1 /* EmojiCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmojiCatalog.swift; sourceTree = "<group>"; };
@@ -633,7 +633,7 @@
 			isa = PBXGroup;
 			children = (
 				DF8C531E464C9C4EDE2648C6 /* Luma.app */,
-				EA54340DD785335237158BEF /* LumaMac.app */,
+				EA54340DD785335237158BEF /* Luma.app */,
 				6317FAA29F22A3EA8450208F /* LumaTests.xctest */,
 				19D4E9404712E8643E31CB93 /* LumaWatch.app */,
 			);
@@ -717,7 +717,7 @@
 				2A745A82DD6F34F0CB46B52B /* WebRTC */,
 			);
 			productName = LumaMac;
-			productReference = EA54340DD785335237158BEF /* LumaMac.app */;
+			productReference = EA54340DD785335237158BEF /* Luma.app */;
 			productType = "com.apple.product-type.application";
 		};
 		BAB78463D7DE07A8F7B3D27D /* LumaWatch */ = {
@@ -763,7 +763,7 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
-				LastUpgradeCheck = 1600;
+				LastUpgradeCheck = 2660;
 				TargetAttributes = {
 					0565F6C7DA26F0482928704E = {
 						DevelopmentTeam = K3AS449A74;
@@ -1097,6 +1097,7 @@
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ENTITLEMENTS = Config/LumaMac.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
+				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = K3AS449A74;
 				INFOPLIST_FILE = "Config/LumaMac-Info.plist";
 				INFOPLIST_KEY_CFBundleIconName = AppIcon;
@@ -1119,6 +1120,7 @@
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ENTITLEMENTS = Config/LumaMac.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
+				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = K3AS449A74;
 				INFOPLIST_FILE = "Config/LumaMac-Info.plist";
 				INFOPLIST_KEY_CFBundleIconName = AppIcon;
@@ -1216,6 +1218,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
@@ -1249,6 +1252,7 @@
 				COMPANION_BUNDLE_IDENTIFIER = app.luma.chat;
 				COPY_PHASE_STRIP = NO;
 				CURRENT_PROJECT_VERSION = 31;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -1272,6 +1276,7 @@
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.9;
@@ -1301,6 +1306,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
@@ -1334,6 +1340,7 @@
 				COMPANION_BUNDLE_IDENTIFIER = app.luma.chat;
 				COPY_PHASE_STRIP = NO;
 				CURRENT_PROJECT_VERSION = 31;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -1350,6 +1357,7 @@
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 5.9;
