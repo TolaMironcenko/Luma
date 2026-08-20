@@ -6,7 +6,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 #if os(iOS)
-import UIKit
+    import UIKit
 #endif
 
 private enum EmojiPickerPresentation: Identifiable {
@@ -84,9 +84,9 @@ struct ChatView: View {
         }
         .background(Color.secondary.opacity(0.035))
         .navigationTitle("")
-#if os(iOS)
-        .navigationBarTitleDisplayMode(.inline)
-#endif
+        // #if os(iOS)
+        //         .navigationBarTitleDisplayMode(.inline)
+        // #endif
         .toolbar {
             ToolbarItem(placement: .principal) {
                 chatNavigationTitle
@@ -110,15 +110,20 @@ struct ChatView: View {
                         if !conversation.isGroup {
                             Menu {
                                 Button {
-                                    Task { await model.startCall(to: conversation.jid, withVideo: false) }
+                                    Task {
+                                        await model.startCall(
+                                            to: conversation.jid, withVideo: false)
+                                    }
                                 } label: {
                                     Label("Аудиозвонок", systemImage: "phone")
                                 }
                                 .disabled(!canStartCall)
                                 .help("Аудиозвонок")
-                                
+
                                 Button {
-                                    Task { await model.startCall(to: conversation.jid, withVideo: true) }
+                                    Task {
+                                        await model.startCall(to: conversation.jid, withVideo: true)
+                                    }
                                 } label: {
                                     Label("Видеозвонок", systemImage: "video")
                                 }
@@ -131,7 +136,9 @@ struct ChatView: View {
                             .disabled(!canStartCall)
                         }
                         if conversation.isGroup {
-                            Button { showingGroupInfo = true } label: {
+                            Button {
+                                showingGroupInfo = true
+                            } label: {
                                 Image(systemName: "person.3")
                             }
                             .help("Информация о группе")
@@ -140,9 +147,9 @@ struct ChatView: View {
                 }
             }
         }
-#if os(iOS)
-        .toolbar(replyThreadSelection == nil ? .visible : .hidden, for: .navigationBar)
-#endif
+        #if os(iOS)
+            .toolbar(replyThreadSelection == nil ? .visible : .hidden, for: .navigationBar)
+        #endif
         .fileImporter(
             isPresented: $showingFileImporter,
             allowedContentTypes: fileImportMode.allowedContentTypes,
@@ -164,34 +171,34 @@ struct ChatView: View {
                 schedulePendingAttachmentPreview()
             }
         }
-#if os(iOS)
-        .fullScreenCover(
-            isPresented: $showingPhotoCamera,
-            onDismiss: {
-                schedulePendingAttachmentPreview()
-                if !photoCameraIsPreparingResult {
-                    releaseArchiveSyncAfterCapture()
-                }
-            }
-        ) {
-            SystemPhotoCameraView(
-                onMedia: { result in
-                    showingPhotoCamera = false
-                    switch result {
-                    case .success(let media):
-                        photoCameraIsPreparingResult = true
-                        Task { await stageCapturedMedia(media) }
-                    case .failure(let error):
-                        model.errorMessage = error.localizedDescription
+        #if os(iOS)
+            .fullScreenCover(
+                isPresented: $showingPhotoCamera,
+                onDismiss: {
+                    schedulePendingAttachmentPreview()
+                    if !photoCameraIsPreparingResult {
+                        releaseArchiveSyncAfterCapture()
                     }
-                },
-                onCancel: {
-                    showingPhotoCamera = false
                 }
-            )
-            .ignoresSafeArea()
-        }
-#endif
+            ) {
+                SystemPhotoCameraView(
+                    onMedia: { result in
+                        showingPhotoCamera = false
+                        switch result {
+                        case .success(let media):
+                            photoCameraIsPreparingResult = true
+                            Task { await stageCapturedMedia(media) }
+                        case .failure(let error):
+                            model.errorMessage = error.localizedDescription
+                        }
+                    },
+                    onCancel: {
+                        showingPhotoCamera = false
+                    }
+                )
+                .ignoresSafeArea()
+            }
+        #endif
         .onChange(of: pickedMediaItems) { _, items in
             guard !items.isEmpty else { return }
             Task { await stagePickedMedia(items) }
@@ -276,9 +283,10 @@ struct ChatView: View {
             clearMessageSelection()
             cancelComposerRecording(feedback: false)
             if !showingVideoNoteRecorder,
-               !showingPhotoCamera,
-               !videoNoteIsSending,
-               !photoCameraIsPreparingResult {
+                !showingPhotoCamera,
+                !videoNoteIsSending,
+                !photoCameraIsPreparingResult
+            {
                 releaseArchiveSyncAfterCapture()
             }
             if !showingAttachmentPreview {
@@ -291,7 +299,8 @@ struct ChatView: View {
     @ViewBuilder
     private var replyThreadOverlay: some View {
         if let selection = replyThreadSelection,
-           let root = model.message(withID: selection.rootID, in: conversation.jid) {
+            let root = model.message(withID: selection.rootID, in: conversation.jid)
+        {
             ReplyThreadOverlay(
                 model: model,
                 rootMessage: root,
@@ -323,7 +332,9 @@ struct ChatView: View {
             }
             if !conversation.isGroup {
                 Divider()
-                Button { showingEncryption = true } label: {
+                Button {
+                    showingEncryption = true
+                } label: {
                     Label("Устройства и отпечатки", systemImage: "checkmark.shield")
                 }
             }
@@ -353,14 +364,15 @@ struct ChatView: View {
                     ScrollView {
                         LazyVStack(spacing: 5) {
                             if hasCompletedInitialScroll,
-                               model.hasMoreOlderHistory,
-                               !timelineEntries.isEmpty {
+                                model.hasMoreOlderHistory,
+                                !timelineEntries.isEmpty
+                            {
                                 Color.clear
                                     .frame(height: 1)
                                     .accessibilityHidden(true)
                                     .onAppear {
                                         guard historyTopTriggerArmed,
-                                              !model.isLoadingOlderHistory
+                                            !model.isLoadingOlderHistory
                                         else { return }
                                         historyTopTriggerArmed = false
                                         historyLoadAnchorID = timelineEntries.first?.id
@@ -388,7 +400,7 @@ struct ChatView: View {
                                     // Empty timeline has no scroll gesture, so load
                                     // the first page directly when it appears.
                                     guard model.hasMoreOlderHistory,
-                                          !model.isLoadingOlderHistory
+                                        !model.isLoadingOlderHistory
                                     else { return }
                                     model.loadOlderHistoryForSelectedConversation()
                                 }
@@ -415,10 +427,12 @@ struct ChatView: View {
                                         onToggleSelection: { toggleMessageSelection(message) },
                                         onBeginSelection: { beginMessageSelection(with: message) },
                                         onRetract: {
-                                            destructiveAction = .init(kind: .retract, messages: [message])
+                                            destructiveAction = .init(
+                                                kind: .retract, messages: [message])
                                         },
                                         onDelete: {
-                                            destructiveAction = .init(kind: .localDelete, messages: [message])
+                                            destructiveAction = .init(
+                                                kind: .localDelete, messages: [message])
                                         },
                                         onReplyTap: { targetID in
                                             presentReplyThread(
@@ -440,44 +454,46 @@ struct ChatView: View {
                         .padding(.vertical, 10)
 
                         timelineBottomSentinel
-#if os(iOS)
-                        ChatScrollMetricsObserver(identity: conversation.jid) { isNearBottom in
-                            guard isNearTimelineBottom != isNearBottom else { return }
-                            isNearTimelineBottom = isNearBottom
-                        }
-                        .frame(height: 0)
-                        .accessibilityHidden(true)
-#endif
+                        #if os(iOS)
+                            ChatScrollMetricsObserver(identity: conversation.jid) { isNearBottom in
+                                guard isNearTimelineBottom != isNearBottom else { return }
+                                isNearTimelineBottom = isNearBottom
+                            }
+                            .frame(height: 0)
+                            .accessibilityHidden(true)
+                        #endif
                     }
                     .defaultScrollAnchor(.bottom)
-#if os(iOS)
-                    .scrollDismissesKeyboard(.interactively)
-#endif
+                    #if os(iOS)
+                        .scrollDismissesKeyboard(.interactively)
+                    #endif
                     .coordinateSpace(name: Self.timelineCoordinateSpace)
-#if os(macOS)
-                    .onPreferenceChange(TimelineBottomYPreferenceKey.self) { bottomY in
-                        updateTimelineBottomProximity(
-                            bottomY: bottomY,
-                            viewportHeight: viewport.size.height
-                        )
-                    }
-#endif
+                    #if os(macOS)
+                        .onPreferenceChange(TimelineBottomYPreferenceKey.self) { bottomY in
+                            updateTimelineBottomProximity(
+                                bottomY: bottomY,
+                                viewportHeight: viewport.size.height
+                            )
+                        }
+                    #endif
                     .task(id: timelineEntries.last?.id) {
                         await performInitialScrollAfterLayout(using: proxy)
                     }
                     .onChange(of: timelineEntries.last?.id) { oldID, newID in
                         guard hasCompletedInitialScroll,
-                              let newID,
-                              newID != oldID,
-                              isNearTimelineBottom
-                                || timelineEntries.last?.message.direction == .outgoing else {
+                            let newID,
+                            newID != oldID,
+                            isNearTimelineBottom
+                                || timelineEntries.last?.message.direction == .outgoing
+                        else {
                             return
                         }
                         scrollToBottom(proxy, animated: true)
                     }
                     .onChange(of: model.isLoadingOlderHistory) { wasLoading, isLoading in
                         guard wasLoading, !isLoading,
-                              let anchor = historyLoadAnchorID else { return }
+                            let anchor = historyLoadAnchorID
+                        else { return }
                         Task { @MainActor in
                             await Task.yield()
                             proxy.scrollTo(anchor, anchor: .top)
@@ -491,8 +507,9 @@ struct ChatView: View {
                     }
 
                     if hasCompletedInitialScroll,
-                       !timelineEntries.isEmpty,
-                       !isNearTimelineBottom {
+                        !timelineEntries.isEmpty,
+                        !isNearTimelineBottom
+                    {
                         jumpToLatestButton(using: proxy)
                             .padding(.trailing, 14)
                             .padding(.bottom, 12)
@@ -510,27 +527,27 @@ struct ChatView: View {
 
     @ViewBuilder
     private var timelineBottomSentinel: some View {
-#if os(iOS)
-        Color.clear
-            .frame(height: 1)
-            .accessibilityHidden(true)
-            .id(Self.bottomAnchorID)
-#else
-        Color.clear
-            .frame(height: 1)
-            .background {
-                GeometryReader { geometry in
-                    Color.clear.preference(
-                        key: TimelineBottomYPreferenceKey.self,
-                        value: geometry.frame(
-                            in: .named(Self.timelineCoordinateSpace)
-                        ).maxY
-                    )
+        #if os(iOS)
+            Color.clear
+                .frame(height: 1)
+                .accessibilityHidden(true)
+                .id(Self.bottomAnchorID)
+        #else
+            Color.clear
+                .frame(height: 1)
+                .background {
+                    GeometryReader { geometry in
+                        Color.clear.preference(
+                            key: TimelineBottomYPreferenceKey.self,
+                            value: geometry.frame(
+                                in: .named(Self.timelineCoordinateSpace)
+                            ).maxY
+                        )
+                    }
                 }
-            }
-            .accessibilityHidden(true)
-            .id(Self.bottomAnchorID)
-#endif
+                .accessibilityHidden(true)
+                .id(Self.bottomAnchorID)
+        #endif
     }
 
     private var selectionActionBar: some View {
@@ -566,7 +583,8 @@ struct ChatView: View {
                 }
 
                 if !selectedTimelineMessages.isEmpty,
-                   selectedTimelineMessages.allSatisfy(\.canBeRetracted) {
+                    selectedTimelineMessages.allSatisfy(\.canBeRetracted)
+                {
                     Button(role: .destructive) {
                         destructiveAction = .init(
                             kind: .retract,
@@ -711,21 +729,23 @@ struct ChatView: View {
 
     private var attachmentButton: some View {
         Menu {
-#if os(iOS)
-            Button {
-                presentCamera()
-            } label: {
-                Label("Камера", systemImage: "camera.fill")
-            }
-            .disabled(!SystemPhotoCameraView.isAvailable)
-#endif
+            #if os(iOS)
+                Button {
+                    presentCamera()
+                } label: {
+                    Label("Камера", systemImage: "camera.fill")
+                }
+                .disabled(!SystemPhotoCameraView.isAvailable)
+            #endif
             Button {
                 dismissKeyboard()
                 showingMediaPicker = true
             } label: {
                 Label("Фото или видео (несколько)", systemImage: "photo.on.rectangle")
             }
-            Button { presentFileImporter(.audio) } label: {
+            Button {
+                presentFileImporter(.audio)
+            } label: {
                 Label("Музыка", systemImage: "music.note")
             }
             Button {
@@ -741,7 +761,9 @@ struct ChatView: View {
                 Label("Отправить геопозицию", systemImage: "location.fill")
             }
             Divider()
-            Button { presentFileImporter(.files) } label: {
+            Button {
+                presentFileImporter(.files)
+            } label: {
                 Label("Файлы (несколько)", systemImage: "doc.on.doc")
             }
         } label: {
@@ -842,8 +864,11 @@ struct ChatView: View {
             Image(systemName: liveConversation.invitedBy == nil ? "person.3" : "envelope.badge")
                 .foregroundStyle(.tint)
             VStack(alignment: .leading, spacing: 2) {
-                Text(liveConversation.invitedBy == nil ? "Комната не подключена" : "Вас пригласили в комнату")
-                    .font(.subheadline.weight(.semibold))
+                Text(
+                    liveConversation.invitedBy == nil
+                        ? "Комната не подключена" : "Вас пригласили в комнату"
+                )
+                .font(.subheadline.weight(.semibold))
                 Text(liveConversation.invitedBy ?? conversation.jid)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -953,9 +978,10 @@ struct ChatView: View {
 
     private func beginCaptureGesture() {
         guard canUseComposer,
-              draftIsEmpty,
-              editingMessageID == nil,
-              !isCapturePresentationVisible else { return }
+            draftIsEmpty,
+            editingMessageID == nil,
+            !isCapturePresentationVisible
+        else { return }
 
         dismissKeyboard()
         model.audioPlayback.stop()
@@ -973,8 +999,9 @@ struct ChatView: View {
             do {
                 try await audioRecorder.start()
                 guard !Task.isCancelled,
-                      captureAttemptID == attemptID,
-                      captureGestureIsActive || captureIsLocked else {
+                    captureAttemptID == attemptID,
+                    captureGestureIsActive || captureIsLocked
+                else {
                     audioRecorder.cancel()
                     return
                 }
@@ -1085,26 +1112,27 @@ struct ChatView: View {
 
     private func dismissKeyboard() {
         isComposerFocused = false
-#if os(iOS)
-        UIApplication.shared.sendAction(
-            #selector(UIResponder.resignFirstResponder),
-            to: nil,
-            from: nil,
-            for: nil
-        )
-#endif
+        #if os(iOS)
+            UIApplication.shared.sendAction(
+                #selector(UIResponder.resignFirstResponder),
+                to: nil,
+                from: nil,
+                for: nil
+            )
+        #endif
     }
 
     private func impactFeedback() {
-#if os(iOS)
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-#endif
+        #if os(iOS)
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        #endif
     }
 
     private func sendDraft() {
         let outgoing = draft
         guard canSendToConversation,
-              !outgoing.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+            !outgoing.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else { return }
         draft = ""
         if let editingMessageID {
             self.editingMessageID = nil
@@ -1150,23 +1178,23 @@ struct ChatView: View {
     }
 
     private func presentCamera() {
-#if os(iOS)
-        guard SystemPhotoCameraView.isAvailable else {
-            model.errorMessage = "Камера недоступна на этом устройстве."
-            return
-        }
-        dismissKeyboard()
-        model.audioPlayback.stop()
-        photoCameraIsPreparingResult = false
-        if !captureSuspendsArchiveSync {
-            captureSuspendsArchiveSync = true
-            model.setVideoNoteCaptureActive(true)
-        }
-        Task { @MainActor in
-            await Task.yield()
-            showingPhotoCamera = true
-        }
-#endif
+        #if os(iOS)
+            guard SystemPhotoCameraView.isAvailable else {
+                model.errorMessage = "Камера недоступна на этом устройстве."
+                return
+            }
+            dismissKeyboard()
+            model.audioPlayback.stop()
+            photoCameraIsPreparingResult = false
+            if !captureSuspendsArchiveSync {
+                captureSuspendsArchiveSync = true
+                model.setVideoNoteCaptureActive(true)
+            }
+            Task { @MainActor in
+                await Task.yield()
+                showingPhotoCamera = true
+            }
+        #endif
     }
 
     private func presentVideoNoteRecorder() {
@@ -1251,7 +1279,8 @@ struct ChatView: View {
             return sourceIdentifiers.contains(replyToID)
         }
         if !replies.contains(where: { $0.clientID == selectedReplyID }),
-           let selected = model.message(withID: selectedReplyID, in: conversation.jid) {
+            let selected = model.message(withID: selectedReplyID, in: conversation.jid)
+        {
             replies.append(selected)
         }
         return replies.sorted { lhs, rhs in
@@ -1297,7 +1326,8 @@ struct ChatView: View {
         attachmentDrafts = prepared
         presentAttachmentPreviewAfterPickerDismissal()
         if failedItemCount > 0 {
-            model.errorMessage = "Не удалось подготовить \(failedItemCount) из \(items.prefix(20).count) выбранных фото или видео. Остальные готовы к отправке."
+            model.errorMessage =
+                "Не удалось подготовить \(failedItemCount) из \(items.prefix(20).count) выбранных фото или видео. Остальные готовы к отправке."
         }
     }
 
@@ -1323,13 +1353,15 @@ struct ChatView: View {
 
             for _ in 0..<120 {
                 guard !Task.isCancelled,
-                      attachmentPreviewPresentationPending,
-                      !attachmentDrafts.isEmpty else { return }
+                    attachmentPreviewPresentationPending,
+                    !attachmentDrafts.isEmpty
+                else { return }
                 if !showingMediaPicker,
-                   !showingPhotoCamera,
-                   !showingFileImporter,
-                   !isPreparingAttachments,
-                   !showingAttachmentPreview {
+                    !showingPhotoCamera,
+                    !showingFileImporter,
+                    !isPreparingAttachments,
+                    !showingAttachmentPreview
+                {
                     attachmentPreviewPresentationPending = false
                     showingAttachmentPreview = true
                     attachmentPreviewPresentationTask = nil
@@ -1510,9 +1542,11 @@ struct ChatView: View {
                 .fill(Color.accentColor)
                 .frame(width: 3, height: 36)
             VStack(alignment: .leading, spacing: 1) {
-                Text("Ответ: \(message.senderDisplayName ?? model.displayName(for: message.senderJID))")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.tint)
+                Text(
+                    "Ответ: \(message.senderDisplayName ?? model.displayName(for: message.senderJID))"
+                )
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.tint)
                 Text(message.quotePreview)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -1646,144 +1680,146 @@ private struct TimelineBottomYPreferenceKey: PreferenceKey {
 }
 
 #if os(iOS)
-/// Reads the real UIScrollView offset without replacing its delegate or
-/// installing another pan recognizer. SwiftUI geometry preferences can stop
-/// updating after a programmatic ScrollViewReader jump on some iOS releases.
-private struct ChatScrollMetricsObserver: UIViewRepresentable {
-    let identity: String
-    let onNearBottomChange: (Bool) -> Void
+    /// Reads the real UIScrollView offset without replacing its delegate or
+    /// installing another pan recognizer. SwiftUI geometry preferences can stop
+    /// updating after a programmatic ScrollViewReader jump on some iOS releases.
+    private struct ChatScrollMetricsObserver: UIViewRepresentable {
+        let identity: String
+        let onNearBottomChange: (Bool) -> Void
 
-    init(identity: String, onNearBottomChange: @escaping (Bool) -> Void) {
-        self.identity = identity
-        self.onNearBottomChange = onNearBottomChange
-    }
-
-    func makeUIView(context: Context) -> ObserverView {
-        let view = ObserverView(frame: .zero)
-        view.identity = identity
-        view.onNearBottomChange = onNearBottomChange
-        return view
-    }
-
-    func updateUIView(_ uiView: ObserverView, context: Context) {
-        uiView.onNearBottomChange = onNearBottomChange
-        if uiView.identity != identity {
-            uiView.identity = identity
-            uiView.resetReportedState()
-        }
-        uiView.attachToAncestorScrollViewIfNeeded()
-    }
-
-    static func dismantleUIView(_ uiView: ObserverView, coordinator: ()) {
-        uiView.detach()
-    }
-
-    final class ObserverView: UIView {
-        var identity = ""
-        var onNearBottomChange: ((Bool) -> Void)?
-
-        private weak var observedScrollView: UIScrollView?
-        private var observations: [NSKeyValueObservation] = []
-        private var lastNearBottom: Bool?
-        private var attachmentScheduled = false
-        private var metricsReportScheduled = false
-
-        override init(frame: CGRect) {
-            super.init(frame: frame)
-            isUserInteractionEnabled = false
-            backgroundColor = .clear
+        init(identity: String, onNearBottomChange: @escaping (Bool) -> Void) {
+            self.identity = identity
+            self.onNearBottomChange = onNearBottomChange
         }
 
-        required init?(coder: NSCoder) {
-            nil
+        func makeUIView(context: Context) -> ObserverView {
+            let view = ObserverView(frame: .zero)
+            view.identity = identity
+            view.onNearBottomChange = onNearBottomChange
+            return view
         }
 
-        override func didMoveToWindow() {
-            super.didMoveToWindow()
-            attachToAncestorScrollViewIfNeeded()
+        func updateUIView(_ uiView: ObserverView, context: Context) {
+            uiView.onNearBottomChange = onNearBottomChange
+            if uiView.identity != identity {
+                uiView.identity = identity
+                uiView.resetReportedState()
+            }
+            uiView.attachToAncestorScrollViewIfNeeded()
         }
 
-        override func didMoveToSuperview() {
-            super.didMoveToSuperview()
-            attachToAncestorScrollViewIfNeeded()
+        static func dismantleUIView(_ uiView: ObserverView, coordinator: ()) {
+            uiView.detach()
         }
 
-        func attachToAncestorScrollViewIfNeeded() {
-            guard window != nil,
-                  !attachmentScheduled else { return }
-            attachmentScheduled = true
-            DispatchQueue.main.async { [weak self] in
-                guard let self else { return }
-                self.attachmentScheduled = false
-                var ancestor = self.superview
-                while let view = ancestor, !(view is UIScrollView) {
-                    ancestor = view.superview
+        final class ObserverView: UIView {
+            var identity = ""
+            var onNearBottomChange: ((Bool) -> Void)?
+
+            private weak var observedScrollView: UIScrollView?
+            private var observations: [NSKeyValueObservation] = []
+            private var lastNearBottom: Bool?
+            private var attachmentScheduled = false
+            private var metricsReportScheduled = false
+
+            override init(frame: CGRect) {
+                super.init(frame: frame)
+                isUserInteractionEnabled = false
+                backgroundColor = .clear
+            }
+
+            required init?(coder: NSCoder) {
+                nil
+            }
+
+            override func didMoveToWindow() {
+                super.didMoveToWindow()
+                attachToAncestorScrollViewIfNeeded()
+            }
+
+            override func didMoveToSuperview() {
+                super.didMoveToSuperview()
+                attachToAncestorScrollViewIfNeeded()
+            }
+
+            func attachToAncestorScrollViewIfNeeded() {
+                guard window != nil,
+                    !attachmentScheduled
+                else { return }
+                attachmentScheduled = true
+                DispatchQueue.main.async { [weak self] in
+                    guard let self else { return }
+                    self.attachmentScheduled = false
+                    var ancestor = self.superview
+                    while let view = ancestor, !(view is UIScrollView) {
+                        ancestor = view.superview
+                    }
+                    guard let scrollView = ancestor as? UIScrollView else {
+                        self.detach()
+                        return
+                    }
+                    self.observe(scrollView)
                 }
-                guard let scrollView = ancestor as? UIScrollView else {
-                    self.detach()
-                    return
+            }
+
+            func resetReportedState() {
+                lastNearBottom = nil
+                scheduleMetricsReport()
+            }
+
+            func detach() {
+                observations.forEach { $0.invalidate() }
+                observations.removeAll(keepingCapacity: false)
+                observedScrollView = nil
+                metricsReportScheduled = false
+            }
+
+            private func observe(_ scrollView: UIScrollView) {
+                guard observedScrollView !== scrollView else { return }
+                detach()
+                observedScrollView = scrollView
+                observations = [
+                    scrollView.observe(\.contentOffset, options: [.initial, .new]) {
+                        [weak self] _, _ in
+                        self?.scheduleMetricsReport()
+                    },
+                    scrollView.observe(\.contentSize, options: [.new]) { [weak self] _, _ in
+                        self?.scheduleMetricsReport()
+                    },
+                    scrollView.observe(\.bounds, options: [.new]) { [weak self] _, _ in
+                        self?.scheduleMetricsReport()
+                    },
+                ]
+            }
+
+            private func scheduleMetricsReport() {
+                guard !metricsReportScheduled else { return }
+                metricsReportScheduled = true
+                DispatchQueue.main.async { [weak self] in
+                    guard let self else { return }
+                    self.metricsReportScheduled = false
+                    self.reportMetricsNow()
                 }
-                self.observe(scrollView)
+            }
+
+            private func reportMetricsNow() {
+                guard let scrollView = observedScrollView else { return }
+                let maximumOffsetY = max(
+                    -scrollView.adjustedContentInset.top,
+                    scrollView.contentSize.height
+                        - scrollView.bounds.height
+                        + scrollView.adjustedContentInset.bottom
+                )
+                let distance = maximumOffsetY - scrollView.contentOffset.y
+                let isNearBottom = ChatScrollPositionPolicy.isNearBottom(
+                    distanceFromBottom: distance
+                )
+                guard lastNearBottom != isNearBottom else { return }
+                lastNearBottom = isNearBottom
+                onNearBottomChange?(isNearBottom)
             }
         }
-
-        func resetReportedState() {
-            lastNearBottom = nil
-            scheduleMetricsReport()
-        }
-
-        func detach() {
-            observations.forEach { $0.invalidate() }
-            observations.removeAll(keepingCapacity: false)
-            observedScrollView = nil
-            metricsReportScheduled = false
-        }
-
-        private func observe(_ scrollView: UIScrollView) {
-            guard observedScrollView !== scrollView else { return }
-            detach()
-            observedScrollView = scrollView
-            observations = [
-                scrollView.observe(\.contentOffset, options: [.initial, .new]) { [weak self] _, _ in
-                    self?.scheduleMetricsReport()
-                },
-                scrollView.observe(\.contentSize, options: [.new]) { [weak self] _, _ in
-                    self?.scheduleMetricsReport()
-                },
-                scrollView.observe(\.bounds, options: [.new]) { [weak self] _, _ in
-                    self?.scheduleMetricsReport()
-                }
-            ]
-        }
-
-        private func scheduleMetricsReport() {
-            guard !metricsReportScheduled else { return }
-            metricsReportScheduled = true
-            DispatchQueue.main.async { [weak self] in
-                guard let self else { return }
-                self.metricsReportScheduled = false
-                self.reportMetricsNow()
-            }
-        }
-
-        private func reportMetricsNow() {
-            guard let scrollView = observedScrollView else { return }
-            let maximumOffsetY = max(
-                -scrollView.adjustedContentInset.top,
-                scrollView.contentSize.height
-                    - scrollView.bounds.height
-                    + scrollView.adjustedContentInset.bottom
-            )
-            let distance = maximumOffsetY - scrollView.contentOffset.y
-            let isNearBottom = ChatScrollPositionPolicy.isNearBottom(
-                distanceFromBottom: distance
-            )
-            guard lastNearBottom != isNearBottom else { return }
-            lastNearBottom = isNearBottom
-            onNearBottomChange?(isNearBottom)
-        }
     }
-}
 #endif
 
 enum ComposerRecordingGestureResolution: Equatable {
@@ -1894,22 +1930,22 @@ private struct TelegramRecordButton: View {
             y: isRecording ? 4 : 2
         )
         .contentShape(Circle())
-#if os(iOS)
-        .overlay {
-            ComposerRecordTouchSurface(
-                onBegan: { beginPhysicalPress(at: $0) },
-                onMoved: movePhysicalPress,
-                onEnded: { translation, eventTime in
-                    endPhysicalPress(translation, at: eventTime)
-                },
-                onCancelled: cancelPhysicalPress
-            )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .accessibilityHidden(true)
-        }
-#else
-        .gesture(recordGesture)
-#endif
+        #if os(iOS)
+            .overlay {
+                ComposerRecordTouchSurface(
+                    onBegan: { beginPhysicalPress(at: $0) },
+                    onMoved: movePhysicalPress,
+                    onEnded: { translation, eventTime in
+                        endPhysicalPress(translation, at: eventTime)
+                    },
+                    onCancelled: cancelPhysicalPress
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .accessibilityHidden(true)
+            }
+        #else
+            .gesture(recordGesture)
+        #endif
         .opacity(isEnabled ? 1 : 0.45)
         .allowsHitTesting(isEnabled && !isFinalizing)
         .animation(.spring(response: 0.24, dampingFraction: 0.78), value: isRecording)
@@ -1970,9 +2006,10 @@ private struct TelegramRecordButton: View {
         longPressTask?.cancel()
         longPressTask = nil
         let wasLongPress = didBeginLongPress
-        let elapsed = pressStartedAt.map {
-            eventTime.timeIntervalSince($0)
-        } ?? 0
+        let elapsed =
+            pressStartedAt.map {
+                eventTime.timeIntervalSince($0)
+            } ?? 0
         isPressing = false
         didBeginLongPress = false
         pressStartedAt = nil
@@ -2022,102 +2059,102 @@ private struct TelegramRecordButton: View {
 }
 
 #if os(iOS)
-/// A raw UIKit touch surface keeps ownership of the physical finger while the
-/// SwiftUI composer swaps its idle controls for the recording preview. A
-/// SwiftUI DragGesture can be cancelled by that hierarchy update and used to
-/// report the cancellation as an early end on some iOS releases.
-@MainActor
-private struct ComposerRecordTouchSurface: UIViewRepresentable {
-    let onBegan: (Date) -> Void
-    let onMoved: (CGSize) -> Void
-    let onEnded: (CGSize, Date) -> Void
-    let onCancelled: () -> Void
+    /// A raw UIKit touch surface keeps ownership of the physical finger while the
+    /// SwiftUI composer swaps its idle controls for the recording preview. A
+    /// SwiftUI DragGesture can be cancelled by that hierarchy update and used to
+    /// report the cancellation as an early end on some iOS releases.
+    @MainActor
+    private struct ComposerRecordTouchSurface: UIViewRepresentable {
+        let onBegan: (Date) -> Void
+        let onMoved: (CGSize) -> Void
+        let onEnded: (CGSize, Date) -> Void
+        let onCancelled: () -> Void
 
-    func makeUIView(context: Context) -> TouchView {
-        let view = TouchView(frame: .zero)
-        update(view)
-        return view
+        func makeUIView(context: Context) -> TouchView {
+            let view = TouchView(frame: .zero)
+            update(view)
+            return view
+        }
+
+        func updateUIView(_ uiView: TouchView, context: Context) {
+            update(uiView)
+        }
+
+        private func update(_ view: TouchView) {
+            view.onBegan = onBegan
+            view.onMoved = onMoved
+            view.onEnded = onEnded
+            view.onCancelled = onCancelled
+        }
+
+        final class TouchView: UIView {
+            var onBegan: ((Date) -> Void)?
+            var onMoved: ((CGSize) -> Void)?
+            var onEnded: ((CGSize, Date) -> Void)?
+            var onCancelled: (() -> Void)?
+
+            private var activeTouch: UITouch?
+            private var origin = CGPoint.zero
+
+            override init(frame: CGRect) {
+                super.init(frame: frame)
+                backgroundColor = .clear
+                isOpaque = false
+                isExclusiveTouch = true
+                isMultipleTouchEnabled = false
+                isAccessibilityElement = false
+            }
+
+            required init?(coder: NSCoder) {
+                nil
+            }
+
+            override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+                guard activeTouch == nil, let touch = touches.first else { return }
+                activeTouch = touch
+                origin = touch.location(in: window)
+                onBegan?(eventDate(for: touch))
+            }
+
+            override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+                guard let touch = trackedTouch(in: touches) else { return }
+                onMoved?(translation(for: touch))
+            }
+
+            override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+                guard let touch = trackedTouch(in: touches) else { return }
+                let translation = translation(for: touch)
+                let date = eventDate(for: touch)
+                activeTouch = nil
+                onEnded?(translation, date)
+            }
+
+            override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+                guard trackedTouch(in: touches) != nil else { return }
+                activeTouch = nil
+                onCancelled?()
+            }
+
+            private func trackedTouch(in touches: Set<UITouch>) -> UITouch? {
+                guard let activeTouch else { return nil }
+                return touches.first(where: { $0 === activeTouch })
+            }
+
+            private func translation(for touch: UITouch) -> CGSize {
+                let location = touch.location(in: window)
+                return CGSize(
+                    width: location.x - origin.x,
+                    height: location.y - origin.y
+                )
+            }
+
+            private func eventDate(for touch: UITouch) -> Date {
+                Date().addingTimeInterval(
+                    touch.timestamp - ProcessInfo.processInfo.systemUptime
+                )
+            }
+        }
     }
-
-    func updateUIView(_ uiView: TouchView, context: Context) {
-        update(uiView)
-    }
-
-    private func update(_ view: TouchView) {
-        view.onBegan = onBegan
-        view.onMoved = onMoved
-        view.onEnded = onEnded
-        view.onCancelled = onCancelled
-    }
-
-    final class TouchView: UIView {
-        var onBegan: ((Date) -> Void)?
-        var onMoved: ((CGSize) -> Void)?
-        var onEnded: ((CGSize, Date) -> Void)?
-        var onCancelled: (() -> Void)?
-
-        private var activeTouch: UITouch?
-        private var origin = CGPoint.zero
-
-        override init(frame: CGRect) {
-            super.init(frame: frame)
-            backgroundColor = .clear
-            isOpaque = false
-            isExclusiveTouch = true
-            isMultipleTouchEnabled = false
-            isAccessibilityElement = false
-        }
-
-        required init?(coder: NSCoder) {
-            nil
-        }
-
-        override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
-            guard activeTouch == nil, let touch = touches.first else { return }
-            activeTouch = touch
-            origin = touch.location(in: window)
-            onBegan?(eventDate(for: touch))
-        }
-
-        override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
-            guard let touch = trackedTouch(in: touches) else { return }
-            onMoved?(translation(for: touch))
-        }
-
-        override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
-            guard let touch = trackedTouch(in: touches) else { return }
-            let translation = translation(for: touch)
-            let date = eventDate(for: touch)
-            activeTouch = nil
-            onEnded?(translation, date)
-        }
-
-        override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
-            guard trackedTouch(in: touches) != nil else { return }
-            activeTouch = nil
-            onCancelled?()
-        }
-
-        private func trackedTouch(in touches: Set<UITouch>) -> UITouch? {
-            guard let activeTouch else { return nil }
-            return touches.first(where: { $0 === activeTouch })
-        }
-
-        private func translation(for touch: UITouch) -> CGSize {
-            let location = touch.location(in: window)
-            return CGSize(
-                width: location.x - origin.x,
-                height: location.y - origin.y
-            )
-        }
-
-        private func eventDate(for touch: UITouch) -> Date {
-            Date().addingTimeInterval(
-                touch.timestamp - ProcessInfo.processInfo.systemUptime
-            )
-        }
-    }
-}
 #endif
 
 private struct ReplyThreadSelection: Equatable {
@@ -2188,7 +2225,8 @@ private struct MessageDestructiveAction: Identifiable {
                 ? "\(messageCountText) исчезнут только из истории Luma на этом устройстве."
                 : "Сообщение исчезнет только из истории Luma на этом устройстве."
         case .retract:
-            return "Luma отправит XMPP-запрос retract для \(messageCountText). Сервер и другие клиенты могут не удалить уже полученные копии."
+            return
+                "Luma отправит XMPP-запрос retract для \(messageCountText). Сервер и другие клиенты могут не удалить уже полученные копии."
         }
     }
 
@@ -2242,7 +2280,8 @@ private func copyPickedMediaFile(_ source: URL, fallbackExtension: String) throw
     let fileManager = FileManager.default
     let rootDirectory = fileManager.temporaryDirectory
         .appendingPathComponent("LumaPhotoPicker", isDirectory: true)
-    let selectionDirectory = rootDirectory
+    let selectionDirectory =
+        rootDirectory
         .appendingPathComponent(UUID().uuidString, isDirectory: true)
     try fileManager.createDirectory(
         at: selectionDirectory,
@@ -2250,7 +2289,8 @@ private func copyPickedMediaFile(_ source: URL, fallbackExtension: String) throw
     )
 
     let values = try? source.resourceValues(forKeys: [.nameKey, .contentTypeKey])
-    let fileExtension = source.pathExtension.isEmpty
+    let fileExtension =
+        source.pathExtension.isEmpty
         ? (values?.contentType?.preferredFilenameExtension ?? fallbackExtension)
         : source.pathExtension
     var filename = values?.name ?? source.lastPathComponent
@@ -2282,7 +2322,8 @@ private func copyPickedMediaFile(_ source: URL, fallbackExtension: String) throw
                     forKeys: [.fileSizeKey, .isRegularFileKey]
                 )
                 guard stagedValues.isRegularFile == true,
-                      fileManager.isReadableFile(atPath: destination.path) else {
+                    fileManager.isReadableFile(atPath: destination.path)
+                else {
                     throw MediaFileIOError.unreadableFile(filename)
                 }
                 guard (stagedValues.fileSize ?? 0) > 0 else {
@@ -2310,7 +2351,8 @@ private func writePickedImageData(_ data: Data) throws -> URL {
     }
     let contentType: UTType?
     if let imageSource = CGImageSourceCreateWithData(data as CFData, nil),
-       let typeIdentifier = CGImageSourceGetType(imageSource) {
+        let typeIdentifier = CGImageSourceGetType(imageSource)
+    {
         contentType = UTType(typeIdentifier as String)
     } else {
         contentType = nil
@@ -2318,7 +2360,8 @@ private func writePickedImageData(_ data: Data) throws -> URL {
     let fileExtension = contentType?.preferredFilenameExtension ?? "jpg"
     let rootDirectory = FileManager.default.temporaryDirectory
         .appendingPathComponent("LumaPhotoPicker", isDirectory: true)
-    let selectionDirectory = rootDirectory
+    let selectionDirectory =
+        rootDirectory
         .appendingPathComponent(UUID().uuidString, isDirectory: true)
     try FileManager.default.createDirectory(
         at: selectionDirectory,
