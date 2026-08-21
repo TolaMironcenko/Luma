@@ -1,7 +1,7 @@
 import Combine
 import Foundation
-import Martin
-import MartinOMEMO
+@preconcurrency import Martin
+@preconcurrency import MartinOMEMO
 import WebRTC
 
 private struct BufferedArchiveStanza {

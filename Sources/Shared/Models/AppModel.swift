@@ -2270,7 +2270,7 @@ final class AppModel: ObservableObject {
         }
 
         guard !messages[index].isRetracted else { return }
-        var updatedMessage = messages[index]
+        let updatedMessage = messages[index]
         let existingIndex = updatedMessage.reactions.firstIndex { reaction in
             reactionSenderMatches(
                 reaction.senderJID,
@@ -2502,7 +2502,7 @@ final class AppModel: ObservableObject {
                 updateConversationPreview(for: messages[index], incrementUnread: false)
                 return false
             }
-            var merged = message
+            let merged = message
             if previous.direction == .outgoing && message.direction == .outgoing {
                 merged.localFilename = previous.localFilename ?? message.localFilename
                 merged.mimeType = previous.mimeType ?? message.mimeType

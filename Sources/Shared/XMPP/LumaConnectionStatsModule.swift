@@ -35,7 +35,7 @@ final class LumaConnectionStatsModule: XmppModuleBase, XmppModule, XmppStanzaFil
 
     func processIncoming(stanza: Stanza) -> Bool {
         if stanza.xmlns == Self.smNamespace, stanza.name == "a" {
-            if let raw = stanza.getAttribute("h"), let value = UInt32(raw) {
+            if let raw = stanza.attribute("h"), let value = UInt32(raw) {
                 lock.lock()
                 acknowledged = value
                 lock.unlock()
