@@ -17,7 +17,7 @@ struct LoginView: View {
                 colors: [
                     Color(red: 0.08, green: 0.38, blue: 0.78),
                     Color(red: 0.12, green: 0.62, blue: 0.96),
-                    Color(red: 0.44, green: 0.84, blue: 0.96)
+                    Color(red: 0.44, green: 0.84, blue: 0.96),
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
@@ -76,6 +76,7 @@ struct LoginView: View {
                 Text("XMPP-аккаунт")
                     .font(.headline)
                 TextField("you@example.org", text: $jid)
+                    .keyboardType(.emailAddress)
                     .textFieldStyle(.roundedBorder)
                     .disableAutocorrection(true)
             }
@@ -93,18 +94,24 @@ struct LoginView: View {
                         .textFieldStyle(.roundedBorder)
                     TextField("Автоматически (Luma-XXXX)", text: $resource)
                         .textFieldStyle(.roundedBorder)
-                    Text("Оставьте пустым — Luma создаст уникальный ресурс для этого устройства, чтобы macOS и iOS не конфликтовали между собой.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    Text(
+                        "Оставьте пустым — Luma создаст уникальный ресурс для этого устройства, чтобы macOS и iOS не конфликтовали между собой."
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                     TextField("Сервер вручную (необязательно)", text: $manualHost)
                         .textFieldStyle(.roundedBorder)
-                    TextField(directTLS ? "Порт, обычно 5223" : "Порт, обычно 5222", text: $manualPort)
-                        .textFieldStyle(.roundedBorder)
+                    TextField(
+                        directTLS ? "Порт, обычно 5223" : "Порт, обычно 5222", text: $manualPort
+                    )
+                    .textFieldStyle(.roundedBorder)
                     Toggle("Direct TLS", isOn: $directTLS)
-                    Text("Без ручного адреса Luma использует DNS SRV и автоматически выбирает STARTTLS/direct TLS.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Text(
+                        "Без ручного адреса Luma использует DNS SRV и автоматически выбирает STARTTLS/direct TLS."
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .padding(.top, 14)
             }
@@ -126,10 +133,13 @@ struct LoginView: View {
             .controlSize(.large)
             .disabled(model.isAuthenticating)
 
-            Label("Сообщения отправляются с OMEMO. Пароль хранится только в Keychain.", systemImage: "lock.shield.fill")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
+            Label(
+                "Сообщения отправляются с OMEMO. Пароль хранится только в Keychain.",
+                systemImage: "lock.shield.fill"
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.center)
         }
         .padding(26)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
@@ -149,4 +159,3 @@ struct LoginView: View {
         await model.signIn(account: account, password: password)
     }
 }
-
