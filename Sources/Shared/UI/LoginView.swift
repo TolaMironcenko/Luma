@@ -76,7 +76,9 @@ struct LoginView: View {
                 Text("XMPP-аккаунт")
                     .font(.headline)
                 TextField("you@example.org", text: $jid)
-                    .keyboardType(.emailAddress)
+                    #if os(iOS)
+                        .keyboardType(.emailAddress)
+                    #endif
                     .textFieldStyle(.roundedBorder)
                     .disableAutocorrection(true)
             }
