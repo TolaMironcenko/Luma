@@ -28,7 +28,7 @@ and the Martin / MartinOMEMO libraries. The Xcode project is generated from
   plus an optional simulator build.
 - `make clean` — remove the generated project and DerivedData.
 - `xcodebuild test -project Luma.xcodeproj -scheme Luma \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max'` — build and
+-destination 'platform=iOS Simulator,name=iPhone 17 Pro Max'` — build and
   run the test suite.
 
 ## Coding Style
