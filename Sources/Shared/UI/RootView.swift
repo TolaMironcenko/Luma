@@ -7,25 +7,31 @@ struct RootView: View {
 
     var body: some View {
         ZStack {
-            Group {
-                if model.account == nil {
-                    LoginView(model: model)
-                } else {
-                    MainChatView(model: model)
-                        .environment(\.modelContext, model.modelContext)
+            if model.isAppLocked {
+                // The lock covers every layer: chat list, media viewer and
+                // calls stay hidden until the passcode or biometrics succeed.
+                AppLockView(model: model)
+            } else {
+                Group {
+                    if model.account == nil {
+                        LoginView(model: model)
+                    } else {
+                        MainChatView(model: model)
+                            .environment(\.modelContext, model.modelContext)
+                    }
                 }
-            }
 
-            if let item = model.mediaViewerItem {
-                MediaViewer(item: item, onClose: model.closeMediaViewer)
-                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
-                    .zIndex(100)
-            }
+                if let item = model.mediaViewerItem {
+                    MediaViewer(item: item, onClose: model.closeMediaViewer)
+                        .transition(.opacity.combined(with: .scale(scale: 0.98)))
+                        .zIndex(100)
+                }
 
-            if let call = model.activeCall {
-                CallView(model: model, call: call)
-                    .transition(.opacity.combined(with: .scale(scale: 1.015)))
-                    .zIndex(200)
+                if let call = model.activeCall {
+                    CallView(model: model, call: call)
+                        .transition(.opacity.combined(with: .scale(scale: 1.015)))
+                        .zIndex(200)
+                }
             }
         }
         .animation(.easeInOut(duration: 0.22), value: model.account?.id)

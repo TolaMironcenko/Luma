@@ -72,6 +72,7 @@ targets:
         NSMicrophoneUsageDescription: Luma использует микрофон для голосовых сообщений и звонков.
         NSLocalNetworkUsageDescription: Luma использует локальную сеть для прямого соединения аудио- и видеозвонков.
         NSLocationWhenInUseUsageDescription: Luma использует геопозицию только когда вы выбираете отправку точки в чате.
+        NSFaceIDUsageDescription: Luma использует Face ID для разблокировки приложения.
     entitlements:
       path: Config/Luma.entitlements
       properties: {}
@@ -114,6 +115,7 @@ targets:
         NSCameraUsageDescription: Luma использует камеру для фотографий, видеосообщений и видеозвонков.
         NSMicrophoneUsageDescription: Luma использует микрофон для голосовых сообщений и звонков.
         NSLocationUsageDescription: Luma использует геопозицию только когда вы выбираете отправку точки в чате.
+        NSFaceIDUsageDescription: Luma использует Touch ID для разблокировки приложения.
     entitlements:
       path: Config/LumaMac.entitlements
       properties:

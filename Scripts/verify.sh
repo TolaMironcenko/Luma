@@ -85,7 +85,11 @@ required=(
   Tests/SaslFailureMessageTests.swift
   Tests/MediaPreviewProcessorVideoTests.swift
   Tests/SCRAMSHA512Tests.swift
+  Tests/AppLockPolicyTests.swift
   Sources/Shared/XMPP/LumaScramSha512Mechanism.swift
+  Sources/Shared/Security/AppLockVault.swift
+  Sources/Shared/Models/AppLockPolicy.swift
+  Sources/Shared/UI/AppLockView.swift
   Sources/Shared/XMPP/SASLprep.swift
   Sources/Shared/XMPP/LumaSaslFailureModule.swift
   Sources/Shared/XMPP/SaslFailureMessage.swift
@@ -329,6 +333,22 @@ grep -q 'SCRAM-SHA-512' Sources/Shared/XMPP/LumaScramSha512Mechanism.swift || {
 }
 grep -q 'addMechanism(LumaScramSha512Mechanism' Sources/Shared/XMPP/XMPPService.swift || {
   echo "SCRAM-SHA-512 must be registered ahead of Martin's mechanisms"
+  exit 1
+}
+grep -q 'NSFaceIDUsageDescription' project.yml || {
+  echo "Biometric unlock must declare its usage description"
+  exit 1
+}
+grep -q 'unlockWithBiometrics' Sources/Shared/Models/AppModel.swift || {
+  echo "The app lock must support biometric unlock"
+  exit 1
+}
+grep -q 'AppLockView' Sources/Shared/UI/RootView.swift || {
+  echo "The lock screen must cover every app layer"
+  exit 1
+}
+grep -q 'Блокировка приложения' Sources/Shared/UI/SettingsView.swift || {
+  echo "Settings must offer the app lock toggle"
   exit 1
 }
 grep -q 'func deleteGroupChat' Sources/Shared/Models/AppModel.swift || {

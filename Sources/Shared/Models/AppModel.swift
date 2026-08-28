@@ -1,6 +1,7 @@
 import AVFoundation
 import Combine
 import Foundation
+import LocalAuthentication
 import SwiftData
 import UniformTypeIdentifiers
 import WebRTC
@@ -56,6 +57,9 @@ final class AppModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var informationalMessage: String?
     @Published var previewURL: URL?
+    @Published private(set) var isAppLocked = false
+    @Published private(set) var appLockIsEnabled = false
+    @Published private(set) var appLockBiometricIsEnabled = false
     @Published private(set) var mediaViewerItem: MediaViewerItem?
     @Published private(set) var mediaPreviewURLs: [String: URL] = [:]
     @Published private(set) var mediaThumbnailData: [String: Data] = [:]
@@ -68,6 +72,7 @@ final class AppModel: ObservableObject {
     private let xmpp: XMPPService
     private let credentials: CredentialVault
     private let preferences: AccountPreferences
+    private let appLock = AppLockVault()
     private let notifications: NotificationCoordinator
     private let watchBridge: PhoneWatchBridge
     private let avatarCache: AvatarCache
@@ -128,6 +133,13 @@ final class AppModel: ObservableObject {
         self.notifications = notifications
         self.watchBridge = watchBridge
         self.avatarCache = avatarCache
+
+        // The app lock must be initialised before any view reads it; the
+        // locked state persists only in memory and is re-applied from the
+        // stored preferences on launch.
+        appLockIsEnabled = appLock.isEnabled
+        appLockBiometricIsEnabled = appLock.biometricUnlockEnabled
+        isAppLocked = appLock.isEnabled && !RuntimeEnvironment.isRunningTests
 
         xmpp.eventHandler = { [weak self] event in
             self?.consume(event)
@@ -454,9 +466,86 @@ final class AppModel: ObservableObject {
         if !active {
             resetTypingState()
             syncWatch(immediate: true)
+            if appLockIsEnabled {
+                isAppLocked = true
+            }
         }
         if active, case .disconnected(_) = connectionStatus {
             Task { await reconnect() }
+        }
+    }
+
+    // MARK: - App lock
+
+    func unlockWithPasscode(_ passcode: String) -> Bool {
+        guard appLock.verify(passcode: passcode) else { return false }
+        isAppLocked = false
+        return true
+    }
+
+    func unlockWithBiometrics() async -> Bool {
+        guard appLockIsEnabled, appLockBiometricIsEnabled else { return false }
+        let context = LAContext()
+        var error: NSError?
+        guard context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error)
+        else {
+            return false
+        }
+        do {
+            let granted = try await context.evaluatePolicy(
+                .deviceOwnerAuthenticationWithBiometrics,
+                localizedReason: "Разблокируйте Luma"
+            )
+            guard granted else { return false }
+            isAppLocked = false
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    func enableAppLock(passcode: String) -> Bool {
+        guard AppLockPolicy.isValid(passcode) else { return false }
+        do {
+            try appLock.save(passcode: passcode)
+            appLock.isEnabled = true
+            appLockIsEnabled = true
+            isAppLocked = false
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    func disableAppLock(passcode: String) -> Bool {
+        guard appLock.verify(passcode: passcode) else { return false }
+        try? appLock.deletePasscode()
+        appLock.isEnabled = false
+        appLock.biometricUnlockEnabled = false
+        appLockIsEnabled = false
+        appLockBiometricIsEnabled = false
+        isAppLocked = false
+        return true
+    }
+
+    func setAppLockBiometricUnlock(_ enabled: Bool, passcode: String) -> Bool {
+        guard appLock.verify(passcode: passcode) else { return false }
+        appLock.biometricUnlockEnabled = enabled
+        appLockBiometricIsEnabled = enabled
+        return true
+    }
+
+    func changeAppLockPasscode(from oldPasscode: String, to newPasscode: String) -> Bool {
+        guard AppLockPolicy.isValid(newPasscode), appLock.verify(passcode: oldPasscode) else {
+            return false
+        }
+        do {
+            try appLock.save(passcode: newPasscode)
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
         }
     }
 

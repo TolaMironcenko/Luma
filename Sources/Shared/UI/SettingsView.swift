@@ -1,3 +1,4 @@
+import LocalAuthentication
 import PhotosUI
 import SwiftUI
 
@@ -7,6 +8,7 @@ struct SettingsView: View {
     @State private var showingSignOutConfirmation = false
     @State private var forgetHistory = false
     @State private var avatarItem: PhotosPickerItem?
+    @State private var passcodeSheetMode: AppLockPasscodeSheet.Mode?
 
     var body: some View {
         NavigationStack {
@@ -98,6 +100,36 @@ struct SettingsView: View {
                         .foregroundStyle(.secondary)
                 }
 
+                Section("Блокировка приложения") {
+                    Toggle("Заблокировать приложение", isOn: Binding(
+                        get: { model.appLockIsEnabled },
+                        set: { enabled in
+                            if enabled {
+                                passcodeSheetMode = .setup
+                            } else {
+                                passcodeSheetMode = .verify(.disableLock)
+                            }
+                        }
+                    ))
+                    if model.appLockIsEnabled {
+                        Toggle("Вход по \(biometricName)", isOn: Binding(
+                            get: { model.appLockBiometricIsEnabled },
+                            set: { enabled in
+                                passcodeSheetMode = .verify(
+                                    enabled ? .enableBiometrics : .disableBiometrics
+                                )
+                            }
+                        ))
+                        .disabled(!biometricAvailable)
+                        Button("Сменить пароль") {
+                            passcodeSheetMode = .change
+                        }
+                    }
+                    Text("При включённой блокировке Luma запрашивает пароль при запуске и после сворачивания. Пароль хранится в Keychain.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
                 Section("Приватность чата") {
                     Toggle("Показывать статус набора", isOn: Binding(
                         get: { model.typingIndicatorsEnabled },
@@ -153,10 +185,29 @@ struct SettingsView: View {
                     }
                 }
             }
+            .sheet(item: $passcodeSheetMode) { mode in
+                AppLockPasscodeSheet(model: model, mode: mode)
+            }
         }
 #if os(macOS)
         .frame(minWidth: 500, minHeight: 560)
 #endif
+    }
+
+    private var biometricContext: LAContext {
+        LAContext()
+    }
+
+    private var biometricAvailable: Bool {
+        var error: NSError?
+        return biometricContext.canEvaluatePolicy(
+            .deviceOwnerAuthenticationWithBiometrics,
+            error: &error
+        )
+    }
+
+    private var biometricName: String {
+        biometricContext.biometryType == .faceID ? "Face ID" : "Touch ID"
     }
 
     private var connectionTitle: String {

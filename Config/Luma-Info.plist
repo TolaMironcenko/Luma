@@ -24,6 +24,8 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Luma использует камеру для фотографий, видеосообщений и видеозвонков.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Luma использует Face ID для разблокировки приложения.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Luma использует локальную сеть для прямого соединения аудио- и видеозвонков.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
