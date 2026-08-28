@@ -336,6 +336,14 @@ grep -q 'let items = pickedMediaItems' Sources/Shared/UI/ChatView.swift || {
   echo "Gallery staging must run on picker dismissal only"
   exit 1
 }
+grep -q 'onDismissRequest' Sources/Shared/UI/SystemPhotoCameraView.swift || {
+  echo "The camera picker must request dismissal before background preparation"
+  exit 1
+}
+grep -q 'onDismissRequest' Sources/Shared/UI/ChatView.swift || {
+  echo "The camera cover must dismiss through the SwiftUI binding"
+  exit 1
+}
 grep -q 'ArchiveSyncCursorPolicy.requestPosition' Sources/Shared/XMPP/XMPPService.swift || {
   echo "MAM reconnects must prefer the durable archive UID over timestamps"
   exit 1

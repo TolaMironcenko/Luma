@@ -12,6 +12,13 @@ import UIKit
 
 @MainActor
 struct SystemPhotoCameraView: UIViewControllerRepresentable {
+    /// Called synchronously on the main thread inside
+    /// `didFinishPickingMediaWithInfo`, before any background preparation.
+    /// The host must flip its `isPresented` binding here so SwiftUI drives
+    /// the dismissal; letting UIImagePickerController dismiss itself leaves
+    /// the fullScreenCover state desynchronized and breaks the follow-up
+    /// preview presentation.
+    let onDismissRequest: () -> Void
     let onMedia: (Result<CapturedCameraMedia, Error>) -> Void
     let onCancel: () -> Void
 
@@ -20,7 +27,11 @@ struct SystemPhotoCameraView: UIViewControllerRepresentable {
     }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onMedia: onMedia, onCancel: onCancel)
+        Coordinator(
+            onDismissRequest: onDismissRequest,
+            onMedia: onMedia,
+            onCancel: onCancel
+        )
     }
 
     func makeUIViewController(context: Context) -> UIImagePickerController {
@@ -42,14 +53,17 @@ struct SystemPhotoCameraView: UIViewControllerRepresentable {
     ) {}
 
     final class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+        private let onDismissRequest: () -> Void
         private let onMedia: (Result<CapturedCameraMedia, Error>) -> Void
         private let onCancel: () -> Void
         private var completed = false
 
         init(
+            onDismissRequest: @escaping () -> Void,
             onMedia: @escaping (Result<CapturedCameraMedia, Error>) -> Void,
             onCancel: @escaping () -> Void
         ) {
+            self.onDismissRequest = onDismissRequest
             self.onMedia = onMedia
             self.onCancel = onCancel
         }
@@ -60,6 +74,7 @@ struct SystemPhotoCameraView: UIViewControllerRepresentable {
         ) {
             guard !completed else { return }
             completed = true
+            onDismissRequest()
 
             let mediaType = (info[.mediaType] as? String).flatMap { UTType($0) }
             if mediaType?.conforms(to: .movie) == true,

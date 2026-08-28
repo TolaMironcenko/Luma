@@ -254,13 +254,23 @@ struct ChatView: View {
                 }
             ) {
                 SystemPhotoCameraView(
-                    onMedia: { result in
+                    onDismissRequest: {
+                        // Runs synchronously in the picker delegate while the
+                        // camera is still presented: dismiss through the
+                        // binding so SwiftUI owns the transition, and reserve
+                        // the archive-sync suspension across the dismissal
+                        // while the file is prepared in the background.
                         showingPhotoCamera = false
+                        photoCameraIsPreparingResult = true
+                    },
+                    onMedia: { result in
                         switch result {
                         case .success(let media):
                             photoCameraIsPreparingResult = true
                             Task { await stageCapturedMedia(media) }
                         case .failure(let error):
+                            photoCameraIsPreparingResult = false
+                            releaseArchiveSyncAfterCapture()
                             model.errorMessage = error.localizedDescription
                         }
                     },
@@ -1227,11 +1237,12 @@ struct ChatView: View {
         }
     }
 
+    @discardableResult
     private func stageImportedFiles(
         _ urls: [URL],
         preferredKind: ChatMessage.Kind? = nil
-    ) async {
-        guard !urls.isEmpty else { return }
+    ) async -> Bool {
+        guard !urls.isEmpty else { return false }
         isPreparingAttachments = true
         defer { isPreparingAttachments = false }
         let prepared = await model.prepareAttachmentDrafts(
@@ -1239,10 +1250,11 @@ struct ChatView: View {
             preferredKind: preferredKind,
             for: conversation.jid
         )
-        guard !prepared.isEmpty else { return }
+        guard !prepared.isEmpty else { return false }
         model.discardAttachmentDrafts(attachmentDrafts)
         attachmentDrafts = prepared
         presentAttachmentPreviewAfterPickerDismissal()
+        return true
     }
 
     private func stageCapturedMedia(_ media: CapturedCameraMedia) async {
@@ -1251,7 +1263,10 @@ struct ChatView: View {
             photoCameraIsPreparingResult = false
             releaseArchiveSyncAfterCapture()
         }
-        await stageImportedFiles([media.url], preferredKind: media.kind)
+        let staged = await stageImportedFiles([media.url], preferredKind: media.kind)
+        if !staged, model.errorMessage == nil {
+            model.errorMessage = "Камера вернула файл, который не удалось подготовить к отправке."
+        }
     }
 
     private func presentCamera() {
