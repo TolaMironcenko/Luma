@@ -8,11 +8,17 @@ and the Martin / MartinOMEMO libraries. The Xcode project is generated from
 
 - `Sources/App/` — iOS/macOS app entry point (`LumaApp.swift`).
 - `Sources/Shared/` — shared code:
-  - `Models/` — value types and pure policy enums (`ChatMessage`,
-    `ArchiveSyncPagination`, `ChatTypingPolicy`, …).
-  - `UI/` — SwiftUI views and components.
+  - `Models/` — value types and pure policy enums (`ArchiveSyncPagination`,
+    `ChatTypingPolicy`, …) plus the SwiftData `@Model` classes
+    (`ChatMessage`, `Conversation`).
+  - `UI/` — SwiftUI views; chat list, timeline and forward picker read
+    SwiftData through `@Query` (`MainChatView`, `ChatView`,
+    `ForwardMessageView`).
   - `XMPP/` — `XMPPService` (MAM/OMEMO/MUC), `LumaCallEngine`, OMEMO store.
-  - `Persistence/` — `ChatArchive` (JSON snapshot), preferences.
+  - `Persistence/` — `ArchiveStore` (per-account SwiftData container),
+    `ArchiveMetadataRecord` (durable MAM checkpoint metadata),
+    `LegacyArchiveImporter` (one-time legacy JSON snapshot migration),
+    preferences.
   - `Services/`, `Security/` — media, notifications, credentials.
 - `Sources/Watch/` — single-target watchOS app.
 - `Tests/` — XCTest unit tests.

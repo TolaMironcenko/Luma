@@ -2,6 +2,7 @@ import CoreTransferable
 import Foundation
 import ImageIO
 import PhotosUI
+import SwiftData
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -67,6 +68,65 @@ struct ChatView: View {
     @State private var captureAttemptID = UUID()
     @State private var captureStartTask: Task<Void, Never>?
     @State private var captureSuspendsArchiveSync = false
+    @State private var timelineEntries: [ChatTimelineEntry] = []
+
+    /// Messages of this conversation straight from the SwiftData store,
+    /// ordered like `AppModel.selectedMessages`: timestamp, then clientID.
+    @Query private var messages: [ChatMessage]
+
+    init(model: AppModel, conversation: Conversation) {
+        self.model = model
+        self.conversation = conversation
+        let conversationJID = conversation.jid
+        _messages = Query(
+            filter: #Predicate<ChatMessage> { message in
+                message.conversationID == conversationJID
+            },
+            sort: [
+                SortDescriptor(\ChatMessage.timestamp, order: .forward),
+                SortDescriptor(\ChatMessage.clientID, order: .forward),
+            ]
+        )
+        _audioRecorder = StateObject(wrappedValue: AudioMessageRecorder())
+        _isComposerFocused = FocusState()
+        _draft = State(initialValue: "")
+        _showingFileImporter = State(initialValue: false)
+        _fileImportMode = State(initialValue: FileImportMode.files)
+        _showingEncryption = State(initialValue: false)
+        _showingVideoNoteRecorder = State(initialValue: false)
+        _videoNoteIsSending = State(initialValue: false)
+        _showingMediaPicker = State(initialValue: false)
+        _showingPhotoCamera = State(initialValue: false)
+        _photoCameraIsPreparingResult = State(initialValue: false)
+        _showingLocationPicker = State(initialValue: false)
+        _showingGroupInfo = State(initialValue: false)
+        _showingAttachmentPreview = State(initialValue: false)
+        _attachmentPreviewPresentationPending = State(initialValue: false)
+        _attachmentPreviewPresentationTask = State<Task<Void, Never>?>(initialValue: nil)
+        _pickedMediaItems = State<[PhotosPickerItem]>(initialValue: [])
+        _attachmentDrafts = State<[AttachmentDraft]>(initialValue: [])
+        _isPreparingAttachments = State(initialValue: false)
+        _editingMessageID = State<String?>(initialValue: nil)
+        _replyingToMessageID = State<String?>(initialValue: nil)
+        _forwardingSelection = State<MessageForwardSelection?>(initialValue: nil)
+        _selectedMessageIDs = State<Set<String>>(initialValue: [])
+        _destructiveAction = State<MessageDestructiveAction?>(initialValue: nil)
+        _replyThreadSelection = State<ReplyThreadSelection?>(initialValue: nil)
+        _emojiPickerPresentation = State<EmojiPickerPresentation?>(initialValue: nil)
+        _hasCompletedInitialScroll = State(initialValue: false)
+        _isNearTimelineBottom = State(initialValue: true)
+        _historyLoadAnchorID = State<String?>(initialValue: nil)
+        _historyTopTriggerArmed = State(initialValue: true)
+        _activeCaptureMode = State<ComposerCaptureMode?>(initialValue: nil)
+        _preparingCaptureMode = State<ComposerCaptureMode?>(initialValue: nil)
+        _captureGestureIsActive = State(initialValue: false)
+        _captureIsLocked = State(initialValue: false)
+        _captureDragTranslation = State(initialValue: CGSize.zero)
+        _captureAttemptID = State(initialValue: UUID())
+        _captureStartTask = State<Task<Void, Never>?>(initialValue: nil)
+        _captureSuspendsArchiveSync = State(initialValue: false)
+        _timelineEntries = State<[ChatTimelineEntry]>(initialValue: [])
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -352,13 +412,16 @@ struct ChatView: View {
         model.selectedMessages.filter { selectedMessageIDs.contains($0.clientID) }
     }
 
+    private func rebuildTimelineEntries(from newMessages: [ChatMessage]? = nil) {
+        timelineEntries = ChatTimelineEntry.make(from: newMessages ?? messages)
+    }
+
     private var isSelectingMessages: Bool {
         !selectedMessageIDs.isEmpty
     }
 
     private var messageTimeline: some View {
         ScrollViewReader { proxy in
-            let timelineEntries = model.selectedTimelineEntries
             GeometryReader { viewport in
                 ZStack(alignment: .bottomTrailing) {
                     ScrollView {
@@ -468,6 +531,12 @@ struct ChatView: View {
                         .scrollDismissesKeyboard(.interactively)
                     #endif
                     .coordinateSpace(name: Self.timelineCoordinateSpace)
+                    .onAppear {
+                        rebuildTimelineEntries()
+                    }
+                    .onChange(of: messages) { _, newMessages in
+                        rebuildTimelineEntries(from: newMessages)
+                    }
                     #if os(macOS)
                         .onPreferenceChange(TimelineBottomYPreferenceKey.self) { bottomY in
                             updateTimelineBottomProximity(

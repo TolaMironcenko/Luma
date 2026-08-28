@@ -1,6 +1,7 @@
 import AVFoundation
 import Combine
 import Foundation
+import SwiftData
 import UniformTypeIdentifiers
 import WebRTC
 
@@ -73,6 +74,8 @@ final class AppModel: ObservableObject {
     private let mediaPreviewProcessor = MediaPreviewProcessor()
     private let mediaFileIO = MediaFileIO()
     private var store: ArchiveStore?
+    private var storeAccountJID: String?
+    private var fallbackContext: ModelContext?
     private var bootstrapTask: Task<Void, Never>?
     private var persistTask: Task<Void, Never>?
     private var watchSyncTask: Task<Void, Never>?
@@ -257,9 +260,37 @@ final class AppModel: ObservableObject {
         return entries
     }
 
+    /// The `ModelContext` injected into the SwiftUI environment so views
+    /// can read conversations and messages through `@Query`. Falls back to
+    /// an in-memory context when the on-disk store cannot be opened, keeping
+    /// the session usable without persistence.
+    var modelContext: ModelContext {
+        if let store { return store.context }
+        if let fallbackContext { return fallbackContext }
+        let schema = Schema([
+            Conversation.self,
+            ChatMessage.self,
+            ArchiveMetadata.self,
+        ])
+        let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try! ModelContainer(for: schema, configurations: [configuration])
+        let context = ModelContext(container)
+        fallbackContext = context
+        return context
+    }
+
+    /// Opens the per-account SwiftData store before `account` is published so
+    /// the `@Query`-backed screens never render without a usable context.
+    private func prepareStore(for jid: String) {
+        guard store == nil || storeAccountJID != jid else { return }
+        store = try? ArchiveStore(accountJID: jid)
+        storeAccountJID = jid
+    }
+
     func bootstrap() async {
         guard !RuntimeEnvironment.isRunningTests else { return }
         guard let saved = preferences.load() else { return }
+        prepareStore(for: saved.normalizedJID)
         account = saved
         globalEncryptionEnabled = preferences.encryptionEnabled(for: saved.normalizedJID)
         typingIndicatorsEnabled = preferences.chatStatesEnabled(for: saved.normalizedJID)
@@ -270,6 +301,7 @@ final class AppModel: ObservableObject {
             guard let storedPassword = try credentials.password(for: saved.normalizedJID) else {
                 account = nil
                 store = nil
+                fallbackContext = nil
                 conversations = []
                 rosterContactJIDs = []
                 messages = []
@@ -281,6 +313,7 @@ final class AppModel: ObservableObject {
         } catch {
             account = nil
             store = nil
+            fallbackContext = nil
             conversations = []
             rosterContactJIDs = []
             messages = []
@@ -323,6 +356,7 @@ final class AppModel: ObservableObject {
             rosterContactJIDs = []
             resetMediaSendActivity()
             resetMediaPreviews()
+            prepareStore(for: account.normalizedJID)
             self.account = account
             globalEncryptionEnabled = preferences.encryptionEnabled(for: account.normalizedJID)
             typingIndicatorsEnabled = preferences.chatStatesEnabled(for: account.normalizedJID)
@@ -341,6 +375,7 @@ final class AppModel: ObservableObject {
             await xmpp.disconnect()
             self.account = nil
             store = nil
+            fallbackContext = nil
             conversations = []
             rosterContactJIDs = []
             messages = []
@@ -364,6 +399,7 @@ final class AppModel: ObservableObject {
         watchSyncTask?.cancel()
         watchSyncTask = nil
         store = nil
+        fallbackContext = nil
         account = nil
         conversations = []
         rosterContactJIDs = []
@@ -884,6 +920,7 @@ final class AppModel: ObservableObject {
 
         let affectedConversations = Set(selected.map(\.conversationID))
         for message in selected {
+            modelContext.delete(message)
             locallyDeletedMessageIDs.insert(
                 Self.localDeletionKey(
                     messageID: message.clientID,
@@ -2116,7 +2153,7 @@ final class AppModel: ObservableObject {
             }
         } else {
             let conversation = Conversation(jid: normalized, displayName: name)
-            store?.context.insert(conversation)
+            modelContext.insert(conversation)
             conversations.append(conversation)
         }
         if conversations.first(where: { $0.jid == normalized })?.isGroup != true {
@@ -2169,7 +2206,7 @@ final class AppModel: ObservableObject {
                 shouldAutojoin: shouldAutojoin,
                 invitedBy: invitedBy
             )
-            store?.context.insert(conversation)
+            modelContext.insert(conversation)
             conversations.append(conversation)
         }
         if !isApplyingArchiveBatch {
@@ -2555,8 +2592,8 @@ final class AppModel: ObservableObject {
                 // `merged` is the freshly-created incoming message; replace the
                 // previously managed object with it so SwiftData does not keep
                 // an orphaned duplicate of the same clientID.
-                store?.context.delete(previous)
-                store?.context.insert(merged)
+                modelContext.delete(previous)
+                modelContext.insert(merged)
             }
             if let stanzaID = merged.stanzaID {
                 messageIndexByStanzaKey[
@@ -2575,7 +2612,7 @@ final class AppModel: ObservableObject {
             updateConversationPreview(for: merged, incrementUnread: false)
             return false
         }
-        store?.context.insert(message)
+        modelContext.insert(message)
         messages.append(message)
         let insertedIndex = messages.index(before: messages.endIndex)
         messageIndexByStorageKey[
@@ -2757,8 +2794,9 @@ final class AppModel: ObservableObject {
     private func loadArchive(for jid: String) async {
         resetArchiveBatchState()
         resetMediaPreviews()
-        guard let store = try? ArchiveStore(accountJID: jid) else {
-            self.store = nil
+        prepareStore(for: jid)
+        guard let store else {
+            fallbackContext = nil
             return
         }
         self.store = store
@@ -3058,7 +3096,7 @@ final class AppModel: ObservableObject {
     }
 
     private static func localDeletionKey(messageID: String, conversationID: String) -> String {
-        conversationID.lowercased() + "\u{1F}" + messageID
+        ArchiveStore.deletionKey(messageID: messageID, conversationID: conversationID)
     }
 }
 

@@ -43,8 +43,10 @@ final class ArchiveStore {
         container = try ModelContainer(for: schema, configurations: [configuration])
         context = ModelContext(container)
         context.autosaveEnabled = false
+        applyDataProtection()
 
         migrateLegacyJSONIfNeeded()
+        purgeLocallyDeletedMessages()
     }
 
     func load() -> Loaded {
@@ -86,6 +88,7 @@ final class ArchiveStore {
             MAMCheckpointEntry(key: $0.key, checkpoint: $0.value)
         }
         try context.save()
+        applyDataProtection()
     }
 
     func erase() throws {
@@ -121,11 +124,58 @@ final class ArchiveStore {
         metadata.lastSuccessfulMAMSync = imported.lastSuccessfulMAMSync
         metadata.lastSuccessfulMAMCursor = imported.lastSuccessfulMAMCursor
         metadata.mamCheckpoints = imported.mamCheckpoints
-        try? context.save()
+        do {
+            try context.save()
+        } catch {
+            // The imported rows stay pending in memory so this session keeps
+            // the history, but the legacy JSON remains on disk as the only
+            // durable copy until a save actually succeeds.
+            return
+        }
+        applyDataProtection()
         try? FileManager.default.removeItem(at: legacyJSONURL)
     }
 
-    private static func stableHash(_ value: String) -> String {
+    /// Removes rows that older builds only marked as locally deleted (the
+    /// legacy snapshot filtered them at load time). `@Query`-based views read
+    /// the store directly, so these rows must physically disappear.
+    func purgeLocallyDeletedMessages() {
+        let metadata = fetchMetadata()
+        let deletedKeys = Set(metadata.locallyDeletedMessageIDs)
+        guard !deletedKeys.isEmpty else { return }
+        let messages = (try? context.fetch(FetchDescriptor<ChatMessage>())) ?? []
+        var removedAny = false
+        for message in messages {
+            let key = Self.deletionKey(
+                messageID: message.clientID,
+                conversationID: message.conversationID
+            )
+            guard deletedKeys.contains(key) else { continue }
+            context.delete(message)
+            removedAny = true
+        }
+        if removedAny {
+            try? context.save()
+            applyDataProtection()
+        }
+    }
+
+    /// Key format shared with `AppModel.localDeletionKey`:
+    /// `<conversationID>\u{1F}<messageID>`.
+    static func deletionKey(messageID: String, conversationID: String) -> String {
+        conversationID.lowercased() + "\u{1F}" + messageID
+    }
+
+    private func applyDataProtection() {
+#if os(iOS)
+        try? FileManager.default.setAttributes(
+            [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
+            ofItemAtPath: storeURL.path
+        )
+#endif
+    }
+
+    static func stableHash(_ value: String) -> String {
         let hash = value.lowercased().utf8.reduce(UInt64(14_695_981_039_346_656_037)) { partial, byte in
             (partial ^ UInt64(byte)) &* 1_099_511_628_211
         }

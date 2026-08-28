@@ -1,4 +1,5 @@
 import QuickLook
+import SwiftData
 import SwiftUI
 
 struct RootView: View {
@@ -11,6 +12,7 @@ struct RootView: View {
                     LoginView(model: model)
                 } else {
                     MainChatView(model: model)
+                        .environment(\.modelContext, model.modelContext)
                 }
             }
 

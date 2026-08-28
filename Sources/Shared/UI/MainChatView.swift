@@ -1,4 +1,5 @@
 import Foundation
+import SwiftData
 import SwiftUI
 
 struct MainChatView: View {
@@ -21,27 +22,45 @@ struct MainChatView: View {
     @State private var showingNewGroup = false
     @State private var showingSettings = false
 
+    /// SwiftData-backed chat list. The query orders by last activity;
+    /// `filteredConversations` applies the pinned-first ordering that matches
+    /// `AppModel.sortConversations` (`Bool` is not `Comparable`, so pinning
+    /// cannot be a `SortDescriptor`).
+    @Query(
+        sort: [
+            SortDescriptor(\Conversation.lastActivity, order: .reverse),
+        ]
+    )
+    private var conversations: [Conversation]
+
     private var filteredConversations: [Conversation] {
-        guard !searchText.isEmpty else { return model.conversations }
-        return model.conversations.filter(matchesSearch)
+        let source = searchText.isEmpty ? conversations : conversations.filter(matchesSearch)
+        return source.sorted(by: conversationSort)
+    }
+
+    private func conversationSort(_ lhs: Conversation, _ rhs: Conversation) -> Bool {
+        if lhs.isPinned != rhs.isPinned { return lhs.isPinned }
+        if lhs.lastActivity != rhs.lastActivity { return lhs.lastActivity > rhs.lastActivity }
+        return lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName)
+            == .orderedAscending
     }
 
     private var filteredRosterContacts: [Conversation] {
-        model.conversations
+        conversations
             .filter { !$0.isGroup && model.rosterContactJIDs.contains($0.jid) }
             .filter { searchText.isEmpty || matchesSearch($0) }
             .sorted(by: contactSort)
     }
 
     private var filteredGroupContacts: [Conversation] {
-        model.conversations
+        conversations
             .filter { $0.isGroup }
             .filter { searchText.isEmpty || matchesSearch($0) }
             .sorted(by: contactSort)
     }
 
     private var hasStoredContacts: Bool {
-        !model.rosterContactJIDs.isEmpty || model.conversations.contains { $0.isGroup }
+        !model.rosterContactJIDs.isEmpty || conversations.contains { $0.isGroup }
     }
 
     var body: some View {

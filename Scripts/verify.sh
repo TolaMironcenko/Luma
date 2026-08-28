@@ -80,6 +80,12 @@ required=(
   Tests/VideoNoteStopPolicyTests.swift
   Tests/MessageReplySwipeTests.swift
   Tests/WatchVoiceMessageTests.swift
+  Tests/ArchiveStoreTests.swift
+  Sources/Shared/Models/ChatMessage.swift
+  Sources/Shared/Models/Conversation.swift
+  Sources/Shared/Persistence/ArchiveStore.swift
+  Sources/Shared/Persistence/ArchiveMetadataRecord.swift
+  Sources/Shared/Persistence/LegacyArchiveImporter.swift
   Brand/LumaIcon-1024.png
   Resources/AppAssets.xcassets/AppIcon.appiconset/Contents.json
   Regenerate-Luma-Project.command
@@ -257,6 +263,38 @@ grep -q 'lastSuccessfulMAMCursor' Sources/Shared/Persistence/ArchiveStore.swift 
   echo "The durable archive store must persist the XEP-0313 UID cursor"
   exit 1
 }
+if test -f Sources/Shared/Persistence/ChatArchive.swift; then
+  echo "The legacy JSON ChatArchive actor must stay removed"
+  exit 1
+fi
+grep -q '@Query' Sources/Shared/UI/MainChatView.swift || {
+  echo "Chat list must be SwiftData @Query-driven"
+  exit 1
+}
+grep -q '@Query' Sources/Shared/UI/ChatView.swift || {
+  echo "Chat timeline must be SwiftData @Query-driven"
+  exit 1
+}
+grep -q '@Query' Sources/Shared/UI/ForwardMessageView.swift || {
+  echo "Forward destination list must be SwiftData @Query-driven"
+  exit 1
+}
+grep -q '\.modelContext' Sources/Shared/UI/RootView.swift || {
+  echo "RootView must inject the SwiftData ModelContext"
+  exit 1
+}
+grep -q 'modelContext.delete(message)' Sources/Shared/Models/AppModel.swift || {
+  echo "Local message deletion must remove the SwiftData row"
+  exit 1
+}
+grep -q 'purgeLocallyDeletedMessages' Sources/Shared/Persistence/ArchiveStore.swift || {
+  echo "ArchiveStore must purge locally deleted rows for @Query views"
+  exit 1
+}
+grep -q 'completeUntilFirstUserAuthentication' Sources/Shared/Persistence/ArchiveStore.swift || {
+  echo "The SwiftData store must keep the data protection attribute"
+  exit 1
+}
 grep -q 'ArchiveSyncCursorPolicy.requestPosition' Sources/Shared/XMPP/XMPPService.swift || {
   echo "MAM reconnects must prefer the durable archive UID over timestamps"
   exit 1
@@ -358,7 +396,7 @@ grep -q 'scrollDismissesKeyboard(.interactively)' Sources/Shared/UI/ChatView.swi
   echo "Interactive keyboard dismissal is missing"
   exit 1
 }
-grep -q 'selectedTimelineEntries' Sources/Shared/UI/ChatView.swift || {
+grep -q 'rebuildTimelineEntries' Sources/Shared/UI/ChatView.swift || {
   echo "Chat rows and day boundaries must use the cached stable timeline"
   exit 1
 }
