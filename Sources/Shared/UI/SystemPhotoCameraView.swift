@@ -115,29 +115,29 @@ struct SystemPhotoCameraView: UIViewControllerRepresentable {
             }
         }
 
+        /// Claims the picker-owned temporary movie synchronously, while the
+        /// picker is still alive: UIImagePickerController can delete its
+        /// temporary file as soon as it is dismissed, so a background copy
+        /// races that cleanup and fails with an unreadable source. The move
+        /// is a same-volume rename and does not block the main thread.
         private func prepareMovie(from sourceURL: URL) {
-            let completion = onMedia
-            DispatchQueue.global(qos: .userInitiated).async {
-                let result: Result<CapturedCameraMedia, Error>
-                do {
-                    let fileExtension = sourceURL.pathExtension.isEmpty
-                        ? "mov"
-                        : sourceURL.pathExtension
-                    let destination = try Self.destinationURL(extension: fileExtension)
-                    try FileManager.default.copyItem(at: sourceURL, to: destination)
-                    let values = try destination.resourceValues(
-                        forKeys: [.fileSizeKey, .isRegularFileKey]
-                    )
-                    guard values.isRegularFile == true,
-                          (values.fileSize ?? 0) > 0 else {
-                        try? FileManager.default.removeItem(at: destination)
-                        throw SystemCameraError.emptyMovie
-                    }
-                    result = .success(CapturedCameraMedia(url: destination, kind: .video))
-                } catch {
-                    result = .failure(error)
+            do {
+                let fileExtension = sourceURL.pathExtension.isEmpty
+                    ? "mov"
+                    : sourceURL.pathExtension
+                let destination = try Self.destinationURL(extension: fileExtension)
+                try FileManager.default.moveItem(at: sourceURL, to: destination)
+                let values = try destination.resourceValues(
+                    forKeys: [.fileSizeKey, .isRegularFileKey]
+                )
+                guard values.isRegularFile == true,
+                      (values.fileSize ?? 0) > 0 else {
+                    try? FileManager.default.removeItem(at: destination)
+                    throw SystemCameraError.emptyMovie
                 }
-                DispatchQueue.main.async { completion(result) }
+                onMedia(.success(CapturedCameraMedia(url: destination, kind: .video)))
+            } catch {
+                onMedia(.failure(error))
             }
         }
 

@@ -344,6 +344,10 @@ grep -q 'onDismissRequest' Sources/Shared/UI/ChatView.swift || {
   echo "The camera cover must dismiss through the SwiftUI binding"
   exit 1
 }
+grep -q 'moveItem(at: sourceURL' Sources/Shared/UI/SystemPhotoCameraView.swift || {
+  echo "The picker movie must be claimed synchronously before dismissal cleanup"
+  exit 1
+}
 grep -q 'ArchiveSyncCursorPolicy.requestPosition' Sources/Shared/XMPP/XMPPService.swift || {
   echo "MAM reconnects must prefer the durable archive UID over timestamps"
   exit 1
