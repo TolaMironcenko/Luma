@@ -21,6 +21,7 @@ struct MainChatView: View {
     @State private var showingNewChat = false
     @State private var showingNewGroup = false
     @State private var showingSettings = false
+    @State private var pendingGroupDeletion: Conversation?
 
     /// SwiftData-backed chat list. The query orders by last activity;
     /// `filteredConversations` applies the pinned-first ordering that matches
@@ -129,6 +130,23 @@ struct MainChatView: View {
         .sheet(isPresented: $showingSettings) {
             SettingsView(model: model)
         }
+        .alert(
+            "Удалить групповой чат?",
+            isPresented: Binding(
+                get: { pendingGroupDeletion != nil },
+                set: { if !$0 { pendingGroupDeletion = nil } }
+            )
+        ) {
+            Button("Удалить", role: .destructive) {
+                if let pendingGroupDeletion {
+                    model.deleteGroupChat(jid: pendingGroupDeletion.jid)
+                }
+                pendingGroupDeletion = nil
+            }
+            Button("Отмена", role: .cancel) { pendingGroupDeletion = nil }
+        } message: {
+            Text("Чат и его история будут удалены с этого устройства. Luma выйдет из комнаты, если вы в ней.")
+        }
     }
 
     private var chatList: some View {
@@ -141,6 +159,15 @@ struct MainChatView: View {
                 )
                 .tag(conversation.jid)
                 .listRowInsets(EdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 12))
+                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                    if conversation.isGroup {
+                        Button(role: .destructive) {
+                            pendingGroupDeletion = conversation
+                        } label: {
+                            Label("Удалить", systemImage: "trash")
+                        }
+                    }
+                }
             }
         }
         .listStyle(.plain)

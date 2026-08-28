@@ -312,6 +312,22 @@ grep -q 'Сервер отклонил имя пользователя или п
   echo "SASL failures must produce an actionable Russian message"
   exit 1
 }
+grep -q 'func deleteGroupChat' Sources/Shared/Models/AppModel.swift || {
+  echo "Group chats must support local deletion"
+  exit 1
+}
+grep -q 'deletedGroupChatJIDs' Sources/Shared/Models/AppModel.swift || {
+  echo "Deleted group chats must stay suppressed for the session"
+  exit 1
+}
+grep -q 'Удалить чат' Sources/Shared/UI/GroupInfoView.swift || {
+  echo "Group info must offer deleting the chat"
+  exit 1
+}
+grep -q 'pendingGroupDeletion' Sources/Shared/UI/MainChatView.swift || {
+  echo "Chat list must offer deleting group chats"
+  exit 1
+}
 grep -q 'ArchiveSyncCursorPolicy.requestPosition' Sources/Shared/XMPP/XMPPService.swift || {
   echo "MAM reconnects must prefer the durable archive UID over timestamps"
   exit 1

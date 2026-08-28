@@ -104,6 +104,7 @@ final class AppModel: ObservableObject {
     private var hasMoreOlderHistoryByConversation: [String: Bool] = [:]
     private var pendingRoomPasswords: [String: String] = [:]
     private var joiningRoomJIDs: Set<String> = []
+    private var deletedGroupChatJIDs: Set<String> = []
     private var mediaSendActivity = MediaSendActivityTracker()
     private var mediaPreparationTokens: Set<UUID> = []
     private var videoNoteCaptureIsActive = false
@@ -353,6 +354,7 @@ final class AppModel: ObservableObject {
             locallyDeletedMessageIDs = []
             pendingRoomPasswords = [:]
             joiningRoomJIDs = []
+            deletedGroupChatJIDs = []
             rosterContactJIDs = []
             resetMediaSendActivity()
             resetMediaPreviews()
@@ -404,6 +406,7 @@ final class AppModel: ObservableObject {
         conversations = []
         rosterContactJIDs = []
         messages = []
+        deletedGroupChatJIDs = []
         rebuildMessageIndex()
         selectedConversationID = nil
         isOMEMOReady = false
@@ -623,6 +626,7 @@ final class AppModel: ObservableObject {
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
             .filter(Self.isValidJID)
 
+        deletedGroupChatJIDs.remove(roomJID)
         upsertGroupConversation(
             jid: roomJID,
             name: name,
@@ -690,6 +694,64 @@ final class AppModel: ObservableObject {
         conversations[index].shouldAutojoin = false
         conversations[index].occupantCount = 0
         schedulePersist()
+    }
+
+    /// Leaves the room on the server (when joined) and removes the chat
+    /// together with its local history from this device.
+    func deleteGroupChat(jid rawJID: String) {
+        let jid = rawJID.lowercased()
+        // Suppress re-creation first: leaveRoom fires a synchronous
+        // roomState event, and the server-side state transition would
+        // otherwise resurrect the conversation later in this session.
+        deletedGroupChatJIDs.insert(jid)
+        let wasJoined =
+            conversations.first(where: { $0.jid == jid && $0.isGroup })?.isGroupJoined
+            == true
+        if wasJoined {
+            xmpp.leaveRoom(roomJID: jid)
+        }
+        removeGroupChatLocally(jid: jid)
+        informationalMessage =
+            wasJoined
+            ? "Вы вышли из комнаты, чат удалён с этого устройства."
+            : "Групповой чат удалён с этого устройства."
+    }
+
+    private func removeGroupChatLocally(jid: String) {
+        let normalized = jid.lowercased()
+        if let conversation = conversations.first(where: { $0.jid == normalized }) {
+            modelContext.delete(conversation)
+        }
+        conversations.removeAll { $0.jid == normalized }
+
+        let removedMessages = messages.filter { $0.conversationID == normalized }
+        for message in removedMessages {
+            modelContext.delete(message)
+            removeCachedMedia(for: message.clientID)
+        }
+        messages.removeAll { $0.conversationID == normalized }
+        rebuildMessageIndex()
+
+        let deletionKeyPrefix = normalized + "\u{1F}"
+        locallyDeletedMessageIDs = locallyDeletedMessageIDs.filter {
+            !$0.hasPrefix(deletionKeyPrefix)
+        }
+        pendingCorrections = pendingCorrections.filter { !$0.key.hasPrefix(deletionKeyPrefix) }
+        pendingRetractions = pendingRetractions.filter { !$0.key.hasPrefix(deletionKeyPrefix) }
+        pendingReactions = pendingReactions.filter { !$0.key.hasPrefix(normalized + "|") }
+        hasMoreOlderHistoryByConversation.removeValue(forKey: normalized)
+        pendingRoomPasswords.removeValue(forKey: normalized)
+        joiningRoomJIDs.remove(normalized)
+        localChatStateByConversation.removeValue(forKey: normalized)
+        localTypingPauseTasks.removeValue(forKey: normalized)?.cancel()
+        remoteTypingExpiryTasks.removeValue(forKey: normalized)?.cancel()
+        typingParticipantsByConversation.removeValue(forKey: normalized)
+        if selectedConversationID == normalized {
+            selectedConversationID = nil
+        }
+        sortConversations()
+        schedulePersist()
+        syncWatch()
     }
 
     func inviteMembers(_ rawJIDs: [String], to roomJID: String) async {
@@ -1879,6 +1941,7 @@ final class AppModel: ObservableObject {
             }
         case .roomInvitation(let invitation):
             let jid = invitation.roomJID.lowercased()
+            deletedGroupChatJIDs.remove(jid)
             upsertGroupConversation(
                 jid: jid,
                 name: nil,
@@ -2175,6 +2238,7 @@ final class AppModel: ObservableObject {
         invitedBy: String? = nil
     ) {
         let normalized = jid.lowercased()
+        guard !deletedGroupChatJIDs.contains(normalized) else { return }
         let fallbackName = normalized.split(separator: "@").first.map(String.init) ?? normalized
         let resolvedName = name?.trimmingCharacters(in: .whitespacesAndNewlines)
         let initialDisplayName: String

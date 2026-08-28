@@ -11,6 +11,7 @@ struct GroupInfoView: View {
     @State private var invitees = ""
     @State private var isJoining = false
     @State private var isInviting = false
+    @State private var confirmingDeletion = false
 
     init(model: AppModel, conversation: Conversation) {
         self.model = model
@@ -69,6 +70,16 @@ struct GroupInfoView: View {
                 }
 
                 Section {
+                    Button(role: .destructive) {
+                        confirmingDeletion = true
+                    } label: {
+                        Label("Удалить чат", systemImage: "trash")
+                    }
+                } footer: {
+                    Text("Чат и его история будут удалены с этого устройства.")
+                }
+
+                Section {
                     Label(
                         model.encryptionEnabled(for: conversation.jid)
                             ? "Для комнаты включено OMEMO. Нужны неанонимный MUC и OMEMO-устройства у всех участников."
@@ -84,6 +95,15 @@ struct GroupInfoView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Готово") { dismiss() }
                 }
+            }
+            .alert("Удалить групповой чат?", isPresented: $confirmingDeletion) {
+                Button("Удалить", role: .destructive) {
+                    model.deleteGroupChat(jid: conversation.jid)
+                    dismiss()
+                }
+                Button("Отмена", role: .cancel) {}
+            } message: {
+                Text("Чат и его история будут удалены с этого устройства. Luma выйдет из комнаты, если вы в ней.")
             }
         }
 #if os(macOS)
