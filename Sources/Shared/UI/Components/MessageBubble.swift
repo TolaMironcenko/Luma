@@ -1,9 +1,9 @@
 import SwiftUI
 
 #if os(iOS)
-import UIKit
+    import UIKit
 #elseif os(macOS)
-import AppKit
+    import AppKit
 #endif
 
 @MainActor
@@ -71,6 +71,11 @@ struct MessageBubble: View {
                         Label("Переслать", systemImage: "arrowshape.turn.up.right")
                     }
                 }
+                if message.hasText {
+                    Button(action: copyText) {
+                        Label("Копировать текст", systemImage: "doc.on.doc")
+                    }
+                }
                 if model.canRetryMediaMessage(message) {
                     Button(action: onRetry) {
                         Label("Повторить отправку", systemImage: "arrow.clockwise")
@@ -103,6 +108,15 @@ struct MessageBubble: View {
                 onBeginSelection()
             }
         }
+    }
+
+    private func copyText() {
+        #if os(macOS)
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(message.body, forType: .string)
+        #else
+            UIPasteboard.general.string = message.body
+        #endif
     }
 
     private var messageContainer: some View {
@@ -142,16 +156,20 @@ struct MessageBubble: View {
     }
 
     private var replySwipeIcon: some View {
-        Image(systemName: replySwipeArmed
-            ? "arrowshape.turn.up.left.fill"
-            : "arrowshape.turn.up.left")
-            .font(.system(size: 19, weight: .semibold))
-            .foregroundStyle(Color.accentColor)
-            .scaleEffect(
-                CGFloat(0.8) + CGFloat(0.2) * MessageReplySwipePolicy.progress(for: replySwipeOffset)
-            )
-            .opacity(Double(
-                CGFloat(0.35) + CGFloat(0.65) * MessageReplySwipePolicy.progress(for: replySwipeOffset)
+        Image(
+            systemName: replySwipeArmed
+                ? "arrowshape.turn.up.left.fill"
+                : "arrowshape.turn.up.left"
+        )
+        .font(.system(size: 19, weight: .semibold))
+        .foregroundStyle(Color.accentColor)
+        .scaleEffect(
+            CGFloat(0.8) + CGFloat(0.2) * MessageReplySwipePolicy.progress(for: replySwipeOffset)
+        )
+        .opacity(
+            Double(
+                CGFloat(0.35) + CGFloat(0.65)
+                    * MessageReplySwipePolicy.progress(for: replySwipeOffset)
             ))
     }
 
@@ -192,9 +210,9 @@ struct MessageBubble: View {
     }
 
     private func replySwipeFeedback() {
-#if os(iOS)
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-#endif
+        #if os(iOS)
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        #endif
     }
 
     private var selectionAccessibilityLabel: String {
@@ -232,7 +250,8 @@ struct MessageBubble: View {
         .contentShape(Rectangle())
         .onTapGesture {
             guard let targetID = message.replyToID,
-                  message.kind == .text || message.kind == .system else { return }
+                message.kind == .text || message.kind == .system
+            else { return }
             onReplyTap(targetID)
         }
     }
@@ -246,8 +265,11 @@ struct MessageBubble: View {
         if message.security != .omemo || message.delivery == .failed {
             HStack(spacing: 4) {
                 if message.security != .omemo {
-                    Image(systemName: message.security == .plaintext ? "lock.open" : "exclamationmark.shield")
-                        .foregroundStyle(message.security == .plaintext ? .orange : .red)
+                    Image(
+                        systemName: message.security == .plaintext
+                            ? "lock.open" : "exclamationmark.shield"
+                    )
+                    .foregroundStyle(message.security == .plaintext ? .orange : .red)
                 }
                 if message.delivery == .failed {
                     Image(systemName: "exclamationmark.circle.fill")
@@ -262,8 +284,11 @@ struct MessageBubble: View {
     private var standardMetadata: some View {
         HStack(spacing: 4) {
             if message.callHistory == nil, message.security != .omemo {
-                Image(systemName: message.security == .plaintext ? "lock.open" : "exclamationmark.shield")
-                    .foregroundStyle(message.security == .plaintext ? .orange : .red)
+                Image(
+                    systemName: message.security == .plaintext
+                        ? "lock.open" : "exclamationmark.shield"
+                )
+                .foregroundStyle(message.security == .plaintext ? .orange : .red)
             }
             if message.editedAt != nil {
                 Text("изм.")
@@ -290,7 +315,9 @@ struct MessageBubble: View {
             .font(.subheadline)
             .padding(.horizontal, 13)
             .padding(.vertical, 9)
-            .foregroundStyle(message.direction == .outgoing ? Color.white.opacity(0.86) : Color.secondary)
+            .foregroundStyle(
+                message.direction == .outgoing ? Color.white.opacity(0.86) : Color.secondary
+            )
             .background(bubbleBackground)
             .clipShape(messageBubbleShape)
         } else {
@@ -370,16 +397,20 @@ struct MessageBubble: View {
         HStack(spacing: 12) {
             ZStack {
                 Circle()
-                    .fill(callAccentColor(for: history).opacity(
-                        message.direction == .outgoing ? 0.28 : 0.14
-                    ))
+                    .fill(
+                        callAccentColor(for: history).opacity(
+                            message.direction == .outgoing ? 0.28 : 0.14
+                        ))
                 Image(systemName: history.isVideo ? "video.fill" : "phone.fill")
                     .font(.system(size: 17, weight: .semibold))
-                Image(systemName: message.direction == .outgoing ? "arrow.up.right" : "arrow.down.left")
-                    .font(.system(size: 8, weight: .heavy))
-                    .padding(3)
-                    .background(Circle().fill(callDirectionBadgeBackground))
-                    .offset(x: 14, y: 14)
+                Image(
+                    systemName: message.direction == .outgoing
+                        ? "arrow.up.right" : "arrow.down.left"
+                )
+                .font(.system(size: 8, weight: .heavy))
+                .padding(3)
+                .background(Circle().fill(callDirectionBadgeBackground))
+                .offset(x: 14, y: 14)
             }
             .frame(width: 42, height: 42)
             .foregroundStyle(callIconForeground(for: history))
@@ -488,9 +519,10 @@ struct MessageBubble: View {
         .padding(.bottom, -2)
         .task(id: replyTarget?.remoteAttachmentURL) {
             if let replyTarget,
-               replyTarget.kind == .photo
+                replyTarget.kind == .photo
                     || replyTarget.kind == .video
-                    || replyTarget.kind == .videoNote {
+                    || replyTarget.kind == .videoNote
+            {
                 await model.prepareMediaPreview(replyTarget)
             }
         }
@@ -561,25 +593,25 @@ struct MessageBubble: View {
     @ViewBuilder
     private func replyThumbnailImage(for target: ChatMessage) -> some View {
         if let data = model.mediaThumbnail(for: target) {
-#if os(iOS)
-            if let image = ChatMediaImageCache.image(for: target, data: data) {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
-            } else {
-                Image(systemName: replyMediaIcon(for: target.kind))
-                    .foregroundStyle(compactReplyColor)
-            }
-#elseif os(macOS)
-            if let image = ChatMediaImageCache.image(for: target, data: data) {
-                Image(nsImage: image)
-                    .resizable()
-                    .scaledToFill()
-            } else {
-                Image(systemName: replyMediaIcon(for: target.kind))
-                    .foregroundStyle(compactReplyColor)
-            }
-#endif
+            #if os(iOS)
+                if let image = ChatMediaImageCache.image(for: target, data: data) {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                } else {
+                    Image(systemName: replyMediaIcon(for: target.kind))
+                        .foregroundStyle(compactReplyColor)
+                }
+            #elseif os(macOS)
+                if let image = ChatMediaImageCache.image(for: target, data: data) {
+                    Image(nsImage: image)
+                        .resizable()
+                        .scaledToFill()
+                } else {
+                    Image(systemName: replyMediaIcon(for: target.kind))
+                        .foregroundStyle(compactReplyColor)
+                }
+            #endif
         } else {
             Image(systemName: replyMediaIcon(for: target.kind))
                 .font(.system(size: 12, weight: .semibold))
@@ -611,7 +643,9 @@ struct MessageBubble: View {
             ZStack {
                 Circle()
                     .fill(.white.opacity(message.direction == .outgoing ? 0.22 : 0.12))
-                    .frame(width: message.kind == .videoNote ? 58 : 38, height: message.kind == .videoNote ? 58 : 38)
+                    .frame(
+                        width: message.kind == .videoNote ? 58 : 38,
+                        height: message.kind == .videoNote ? 58 : 38)
                 Image(systemName: mediaIcon)
                     .font(.system(size: message.kind == .videoNote ? 24 : 17))
             }
@@ -649,7 +683,8 @@ struct MessageBubble: View {
             parts.append(String(format: "%d:%02d", seconds / 60, seconds % 60))
         }
         if let byteCount = message.byteCount {
-            parts.append(ByteCountFormatter.string(fromByteCount: Int64(byteCount), countStyle: .file))
+            parts.append(
+                ByteCountFormatter.string(fromByteCount: Int64(byteCount), countStyle: .file))
         }
         return parts.isEmpty ? "Нажмите для просмотра" : parts.joined(separator: " · ")
     }
@@ -684,7 +719,10 @@ struct MessageBubble: View {
     private var bubbleBackground: some View {
         if message.direction == .outgoing {
             LinearGradient(
-                colors: [Color(red: 0.13, green: 0.51, blue: 0.94), Color(red: 0.12, green: 0.63, blue: 0.94)],
+                colors: [
+                    Color(red: 0.13, green: 0.51, blue: 0.94),
+                    Color(red: 0.12, green: 0.63, blue: 0.94),
+                ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
@@ -722,13 +760,13 @@ struct MessageBubble: View {
     }
 }
 
-private extension View {
+extension View {
     @ViewBuilder
-    func lumaTextSelection() -> some View {
-#if os(macOS)
-        textSelection(.enabled)
-#else
-        self
-#endif
+    fileprivate func lumaTextSelection() -> some View {
+        #if os(macOS)
+            textSelection(.enabled)
+        #else
+            self
+        #endif
     }
 }
