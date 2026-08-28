@@ -167,7 +167,8 @@ final class ChatMessage {
     var quotePreview: String {
         if isRetracted { return "Сообщение удалено" }
         let value = kind == .text ? body : previewText
-        let normalized = value
+        let normalized =
+            value
             .replacingOccurrences(of: "\n", with: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard normalized.count > 140 else { return normalized }
@@ -263,5 +264,16 @@ final class ChatMessage {
         guard let slash = value.firstIndex(of: "/") else { return value.lowercased() }
         let bare = value[..<slash].lowercased()
         return bare + String(value[slash...])
+    }
+
+    var hasText: Bool {
+        // 1. Удалённые сообщения не копируем
+        guard !isRetracted else { return false }
+
+        // 2. Исключаем системные уведомления
+        guard kind != .system else { return false }
+
+        // 3. Текст считается существующим, если body не пустая строка (с обрезкой пробелов)
+        return !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 }
