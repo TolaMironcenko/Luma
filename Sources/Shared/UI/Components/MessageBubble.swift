@@ -72,7 +72,7 @@ struct MessageBubble: View {
                     }
                 }
                 if message.hasText {
-                    Button(action: copyText(message.body)) {
+                    Button(action: copyText) {
                         Label("Копировать текст", systemImage: "doc.on.doc")
                     }
                 }
@@ -110,7 +110,7 @@ struct MessageBubble: View {
         }
     }
 
-    private func copyText(body: String) {
+    private func copyText() {
         #if os(macOS)
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(message.body, forType: .string)
