@@ -72,14 +72,7 @@ struct MessageBubble: View {
                     }
                 }
                 if message.hasText {
-                    Button(action: {
-                        #if os(macOS)
-                            NSPasteboard.general.clearContents()
-                            NSPasteboard.general.setString(message.text, forType: .string)
-                        #else
-                            UIPasteboard.general.string = message.text
-                        #endif
-                    }) {
+                    Button(action: copyText(message.body)) {
                         Label("Копировать текст", systemImage: "doc.on.doc")
                     }
                 }
@@ -115,6 +108,15 @@ struct MessageBubble: View {
                 onBeginSelection()
             }
         }
+    }
+
+    private func copyText(body: String) {
+        #if os(macOS)
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(message.body, forType: .string)
+        #else
+            UIPasteboard.general.string = message.body
+        #endif
     }
 
     private var messageContainer: some View {
