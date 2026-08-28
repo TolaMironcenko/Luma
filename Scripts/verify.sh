@@ -328,6 +328,14 @@ grep -q 'pendingGroupDeletion' Sources/Shared/UI/MainChatView.swift || {
   echo "Chat list must offer deleting group chats"
   exit 1
 }
+grep -q 'pickerResetToken' Sources/Shared/UI/ChatView.swift || {
+  echo "The photo picker must be recreated after each selection"
+  exit 1
+}
+grep -q 'let items = pickedMediaItems' Sources/Shared/UI/ChatView.swift || {
+  echo "Gallery staging must run on picker dismissal only"
+  exit 1
+}
 grep -q 'ArchiveSyncCursorPolicy.requestPosition' Sources/Shared/XMPP/XMPPService.swift || {
   echo "MAM reconnects must prefer the durable archive UID over timestamps"
   exit 1

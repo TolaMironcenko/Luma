@@ -68,6 +68,7 @@ struct ChatView: View {
     @State private var captureAttemptID = UUID()
     @State private var captureStartTask: Task<Void, Never>?
     @State private var captureSuspendsArchiveSync = false
+    @State private var pickerResetToken = UUID()
     @State private var timelineEntries: [ChatTimelineEntry] = []
 
     /// Messages of this conversation straight from the SwiftData store,
@@ -125,6 +126,7 @@ struct ChatView: View {
         _captureAttemptID = State(initialValue: UUID())
         _captureStartTask = State<Task<Void, Never>?>(initialValue: nil)
         _captureSuspendsArchiveSync = State(initialValue: false)
+        _pickerResetToken = State(initialValue: UUID())
         _timelineEntries = State<[ChatTimelineEntry]>(initialValue: [])
     }
 
@@ -226,10 +228,20 @@ struct ChatView: View {
             matching: .any(of: [.images, .videos]),
             preferredItemEncoding: .current
         )
+        // A fresh picker identity per attempt: clearing the selection while
+        // the picker is presented desynchronizes its internal state, and the
+        // stale selection then leaks into the next presentation.
+        .id(pickerResetToken)
         .onChange(of: showingMediaPicker) { _, isPresented in
-            if !isPresented {
-                schedulePendingAttachmentPreview()
-            }
+            guard !isPresented else { return }
+            // On Done the binding holds the chosen items; on Cancel SwiftUI
+            // restores the pre-presentation value (kept empty below), so
+            // staging runs only for a confirmed selection.
+            let items = pickedMediaItems
+            pickedMediaItems = []
+            pickerResetToken = UUID()
+            guard !items.isEmpty else { return }
+            Task { await stagePickedMedia(items) }
         }
         #if os(iOS)
             .fullScreenCover(
@@ -259,10 +271,6 @@ struct ChatView: View {
                 .ignoresSafeArea()
             }
         #endif
-        .onChange(of: pickedMediaItems) { _, items in
-            guard !items.isEmpty else { return }
-            Task { await stagePickedMedia(items) }
-        }
         .onChange(of: draft) { _, text in
             model.updateComposerActivity(text, in: liveConversation)
         }
@@ -1364,7 +1372,6 @@ struct ChatView: View {
         var sourceURLs: [URL] = []
         var failedItemCount = 0
         defer {
-            pickedMediaItems = []
             isPreparingAttachments = false
             sourceURLs.forEach(discardPickedMediaFile)
         }
