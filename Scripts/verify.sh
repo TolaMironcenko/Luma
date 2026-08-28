@@ -81,6 +81,11 @@ required=(
   Tests/MessageReplySwipeTests.swift
   Tests/WatchVoiceMessageTests.swift
   Tests/ArchiveStoreTests.swift
+  Tests/SASLprepTests.swift
+  Tests/SaslFailureMessageTests.swift
+  Sources/Shared/XMPP/SASLprep.swift
+  Sources/Shared/XMPP/LumaSaslFailureModule.swift
+  Sources/Shared/XMPP/SaslFailureMessage.swift
   Sources/Shared/Models/ChatMessage.swift
   Sources/Shared/Models/Conversation.swift
   Sources/Shared/Persistence/ArchiveStore.swift
@@ -293,6 +298,18 @@ grep -q 'purgeLocallyDeletedMessages' Sources/Shared/Persistence/ArchiveStore.sw
 }
 grep -q 'completeUntilFirstUserAuthentication' Sources/Shared/Persistence/ArchiveStore.swift || {
   echo "The SwiftData store must keep the data protection attribute"
+  exit 1
+}
+grep -q 'SASLprep' Sources/Shared/XMPP/XMPPService.swift || {
+  echo "SCRAM passwords must be RFC 4013 (SASLprep) normalized"
+  exit 1
+}
+grep -q 'LumaSaslFailureModule' Sources/Shared/XMPP/XMPPService.swift || {
+  echo "The raw SASL failure condition must be captured for the UI"
+  exit 1
+}
+grep -q 'Сервер отклонил имя пользователя или пароль' Sources/Shared/XMPP/SaslFailureMessage.swift || {
+  echo "SASL failures must produce an actionable Russian message"
   exit 1
 }
 grep -q 'ArchiveSyncCursorPolicy.requestPosition' Sources/Shared/XMPP/XMPPService.swift || {

@@ -264,6 +264,8 @@ final class XMPPService {
     private var client: XMPPClient?
     private var omemoStorage: LumaOMEMOStore?
     private var connectionStatsModule: LumaConnectionStatsModule?
+    private var saslFailureModule: LumaSaslFailureModule?
+    private var activePassword: String?
     private var lastLoginDate: Date?
     private var smacksSessionEstablishedDate: Date?
     private var cancellables: Set<AnyCancellable> = []
@@ -361,7 +363,7 @@ final class XMPPService {
         case .connected:
             return .connected
         case .disconnected(let reason):
-            return .disconnected(reason: Self.reasonText(reason))
+            return .disconnected(reason: reasonText(reason))
         }
     }
 
@@ -429,6 +431,7 @@ final class XMPPService {
 
         configureModules(client: client, signalContext: signalContext, omemoStorage: omemoStorage)
         configureConnection(client: client, account: account, password: password)
+        activePassword = password
         subscribe(to: client, omemoStorage: omemoStorage)
 
         self.client = client
@@ -449,8 +452,9 @@ final class XMPPService {
             startArchiveSyncIfAvailable()
         } catch {
             callEngine.detach()
-            eventHandler?(.connection(.disconnected(reason: error.localizedDescription)))
-            throw LumaXMPPError.connection(error.localizedDescription)
+            let message = connectionFailureMessage(for: error)
+            eventHandler?(.connection(.disconnected(reason: message)))
+            throw LumaXMPPError.connection(message)
         }
     }
 
@@ -503,6 +507,7 @@ final class XMPPService {
         omemoConfiguredRoomJIDs.removeAll()
         knownChatStatePeers.removeAll()
         connectionStatsModule = nil
+        saslFailureModule = nil
         lastLoginDate = nil
         smacksSessionEstablishedDate = nil
         eventHandler?(.connection(.disconnected(reason: nil)))
@@ -1557,6 +1562,9 @@ final class XMPPService {
             LumaConnectionStatsModule()
         )
         _ = client.modulesManager.register(StreamManagementModule())
+        // Registered before SaslModule so the raw RFC 6120 failure condition
+        // is captured before Martin collapses it into SaslError.
+        saslFailureModule = client.modulesManager.register(LumaSaslFailureModule())
         _ = client.modulesManager.register(SaslModule())
         _ = client.modulesManager.register(ResourceBinderModule())
         _ = client.modulesManager.register(SessionEstablishmentModule())
@@ -1668,6 +1676,20 @@ final class XMPPService {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] state in
                 self?.handle(state: state)
+            }
+            .store(in: &cancellables)
+
+        // When the server advertises SCRAM, swap the password in the
+        // connection configuration for its RFC 4013 (SASLprep) form before
+        // the challenge response is computed. Martin's SCRAM hashes the raw
+        // UTF-8 password, which mismatches SASLprep-compliant servers for
+        // passwords with non-ASCII spaces, soft hyphens, fullwidth forms, …
+        client.module(.streamFeatures).$streamFeatures
+            .compactMap { $0.element }
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self, weak client] features in
+                guard let self, let client else { return }
+                self.applySASLprepIfNeeded(client: client, features: features)
             }
             .store(in: &cancellables)
 
@@ -1858,7 +1880,7 @@ final class XMPPService {
             startArchiveSyncIfAvailable()
         case .disconnected(let reason):
             suspendArchiveSyncForDisconnect()
-            eventHandler?(.connection(.disconnected(reason: Self.reasonText(reason))))
+            eventHandler?(.connection(.disconnected(reason: reasonText(reason))))
         }
     }
 
@@ -3717,11 +3739,46 @@ final class XMPPService {
         #endif
     }
 
-    private static func reasonText(_ reason: XMPPClient.State.DisconnectionReason) -> String? {
-        if case .none = reason {
+    private func reasonText(_ reason: XMPPClient.State.DisconnectionReason) -> String? {
+        switch reason {
+        case .none:
             return nil
+        case .authenticationFailure(let error):
+            return SaslFailureMessage.describe(
+                error: error,
+                condition: saslFailureModule?.lastFailure?.condition,
+                serverText: saslFailureModule?.lastFailure?.text
+            )
+        default:
+            return reason.localizedDescription
         }
-        return reason.localizedDescription
+    }
+
+    private func connectionFailureMessage(for error: Error) -> String {
+        if let reason = error as? XMPPClient.State.DisconnectionReason {
+            return reasonText(reason) ?? error.localizedDescription
+        }
+        return error.localizedDescription
+    }
+
+    private func applySASLprepIfNeeded(client: XMPPClient, features: Element) {
+        guard let activePassword, !activePassword.isEmpty else { return }
+        let mechanisms =
+            features
+            .findChild(name: "mechanisms", xmlns: "urn:ietf:params:xml:ns:xmpp-sasl")?
+            .children
+            .filter { $0.name == "mechanism" }
+            .compactMap { $0.value } ?? []
+        guard mechanisms.contains(where: { $0.hasPrefix("SCRAM-") }) else { return }
+        guard case .password(let currentPassword, _, _) = client.connectionConfiguration.credentials,
+            let prepared = try? SASLprep.prepare(activePassword),
+            prepared != currentPassword
+        else { return }
+        client.connectionConfiguration.credentials = .password(
+            password: prepared,
+            authenticationName: nil,
+            cache: nil
+        )
     }
 }
 
