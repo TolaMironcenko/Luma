@@ -313,6 +313,14 @@ grep -q 'Сервер отклонил имя пользователя или п
   echo "SASL failures must produce an actionable Russian message"
   exit 1
 }
+grep -q "doesn't match the one we calculated" Sources/Shared/XMPP/SaslFailureMessage.swift || {
+  echo "Prosody SCRAM proof mismatches must be explained in Russian"
+  exit 1
+}
+grep -q 'passwordVisible' Sources/Shared/UI/LoginView.swift || {
+  echo "The login screen must let the user verify the typed password"
+  exit 1
+}
 grep -q 'func deleteGroupChat' Sources/Shared/Models/AppModel.swift || {
   echo "Group chats must support local deletion"
   exit 1

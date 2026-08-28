@@ -4,6 +4,7 @@ struct LoginView: View {
     @ObservedObject var model: AppModel
     @State private var jid = ""
     @State private var password = ""
+    @State private var passwordVisible = false
     @State private var displayName = ""
     @State private var resource = ""
     @State private var showAdvanced = false
@@ -79,6 +80,9 @@ struct LoginView: View {
                     #if os(iOS)
                         .keyboardType(.emailAddress)
                     #endif
+                    .textContentType(.username)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
                     .textFieldStyle(.roundedBorder)
                     .disableAutocorrection(true)
             }
@@ -86,8 +90,29 @@ struct LoginView: View {
             VStack(alignment: .leading, spacing: 7) {
                 Text("Пароль")
                     .font(.headline)
-                SecureField("Пароль", text: $password)
+                HStack(spacing: 8) {
+                    Group {
+                        if passwordVisible {
+                            TextField("Пароль", text: $password)
+                                .textContentType(.oneTimeCode)
+                        } else {
+                            SecureField("Пароль", text: $password)
+                                .textContentType(.password)
+                        }
+                    }
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
                     .textFieldStyle(.roundedBorder)
+
+                    Button {
+                        passwordVisible.toggle()
+                    } label: {
+                        Image(systemName: passwordVisible ? "eye.slash.fill" : "eye.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(passwordVisible ? "Скрыть пароль" : "Показать пароль")
+                }
             }
 
             DisclosureGroup("Дополнительные настройки", isExpanded: $showAdvanced) {

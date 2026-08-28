@@ -8,6 +8,15 @@ import Martin
 enum SaslFailureMessage {
     static func describe(error: Error, condition: String?, serverText: String?) -> String {
         if let serverText, !serverText.isEmpty {
+            // Prosody's SCRAM proof mismatch: the password the client used
+            // differs from the one stored on the server. Translate it into an
+            // actionable message (most often this is a typo or password
+            // autofill substituting another account's password).
+            if serverText.localizedCaseInsensitiveContains(
+                "doesn't match the one we calculated"
+            ) {
+                return "Пароль не совпадает с сохранённым на сервере. Проверьте пароль (например, через значок глаза) и не используйте автозаполнение другого аккаунта."
+            }
             return "Сервер отклонил вход: \(serverText)"
         }
         switch condition {
