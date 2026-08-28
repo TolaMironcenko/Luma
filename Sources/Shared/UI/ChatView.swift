@@ -1,6 +1,7 @@
 import CoreTransferable
 import Foundation
 import ImageIO
+import os
 import PhotosUI
 import SwiftData
 import SwiftUI
@@ -1263,10 +1264,42 @@ struct ChatView: View {
             photoCameraIsPreparingResult = false
             releaseArchiveSyncAfterCapture()
         }
+        let logger = Logger(subsystem: "Luma", category: "video-preview")
+        await waitForCameraFileSettling(at: media.url, logger: logger)
         let staged = await stageImportedFiles([media.url], preferredKind: media.kind)
-        if !staged, model.errorMessage == nil {
-            model.errorMessage = "Камера вернула файл, который не удалось подготовить к отправке."
+        if staged {
+            if let draft = attachmentDrafts.last {
+                logger.info(
+                    "camera draft staged: kind=\(draft.kind.rawValue) mime=\(draft.mimeType) size=\(draft.byteCount) duration=\(String(describing: draft.duration)) thumbnailBytes=\(draft.thumbnailData?.count ?? 0)"
+                )
+            }
+        } else {
+            logger.error("camera staging produced no drafts")
+            if model.errorMessage == nil {
+                model.errorMessage = "Камера вернула файл, который не удалось подготовить к отправке."
+            }
         }
+    }
+
+    /// The picker can hand over a movie whose final bytes are still being
+    /// flushed. Wait until the file size stops changing so staging never
+    /// copies a truncated file.
+    private func waitForCameraFileSettling(at url: URL, logger: Logger) async {
+        guard let initial = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize else {
+            return
+        }
+        var previous = initial
+        for _ in 0..<10 {
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            guard let current = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize else {
+                return
+            }
+            if current == previous {
+                return
+            }
+            previous = current
+        }
+        logger.warning("camera file size kept changing; staging anyway")
     }
 
     private func presentCamera() {

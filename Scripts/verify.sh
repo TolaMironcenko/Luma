@@ -83,6 +83,7 @@ required=(
   Tests/ArchiveStoreTests.swift
   Tests/SASLprepTests.swift
   Tests/SaslFailureMessageTests.swift
+  Tests/MediaPreviewProcessorVideoTests.swift
   Sources/Shared/XMPP/SASLprep.swift
   Sources/Shared/XMPP/LumaSaslFailureModule.swift
   Sources/Shared/XMPP/SaslFailureMessage.swift
@@ -346,6 +347,10 @@ grep -q 'onDismissRequest' Sources/Shared/UI/ChatView.swift || {
 }
 grep -q 'moveItem(at: sourceURL' Sources/Shared/UI/SystemPhotoCameraView.swift || {
   echo "The picker movie must be claimed synchronously before dismissal cleanup"
+  exit 1
+}
+grep -q 'video-preview' Sources/Shared/UI/ChatView.swift || {
+  echo "The camera video path must log diagnostics"
   exit 1
 }
 grep -q 'ArchiveSyncCursorPolicy.requestPosition' Sources/Shared/XMPP/XMPPService.swift || {

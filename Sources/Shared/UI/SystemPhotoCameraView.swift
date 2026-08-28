@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 struct CapturedCameraMedia: Sendable {
     let url: URL
@@ -121,7 +122,10 @@ struct SystemPhotoCameraView: UIViewControllerRepresentable {
         /// races that cleanup and fails with an unreadable source. The move
         /// is a same-volume rename and does not block the main thread.
         private func prepareMovie(from sourceURL: URL) {
+            let logger = Logger(subsystem: "Luma", category: "video-preview")
             do {
+                let sourceSize = (try? sourceURL.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? -1
+                logger.info("picker movie ready: source=\(sourceURL.lastPathComponent) size=\(sourceSize)")
                 let fileExtension = sourceURL.pathExtension.isEmpty
                     ? "mov"
                     : sourceURL.pathExtension
@@ -130,13 +134,15 @@ struct SystemPhotoCameraView: UIViewControllerRepresentable {
                 let values = try destination.resourceValues(
                     forKeys: [.fileSizeKey, .isRegularFileKey]
                 )
-                guard values.isRegularFile == true,
-                      (values.fileSize ?? 0) > 0 else {
+                let movedSize = values.fileSize ?? 0
+                logger.info("picker movie moved: size=\(movedSize) regular=\(values.isRegularFile == true)")
+                guard values.isRegularFile == true, movedSize > 0 else {
                     try? FileManager.default.removeItem(at: destination)
                     throw SystemCameraError.emptyMovie
                 }
                 onMedia(.success(CapturedCameraMedia(url: destination, kind: .video)))
             } catch {
+                logger.error("picker movie preparation failed: \(error.localizedDescription)")
                 onMedia(.failure(error))
             }
         }
