@@ -79,9 +79,9 @@ struct LoginView: View {
                 TextField("you@example.org", text: $jid)
                     #if os(iOS)
                         .keyboardType(.emailAddress)
+                        .textInputAutocapitalization(.never)
                     #endif
                     .textContentType(.username)
-                    .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .textFieldStyle(.roundedBorder)
                     .disableAutocorrection(true)
@@ -101,7 +101,9 @@ struct LoginView: View {
                         }
                     }
                     .autocorrectionDisabled()
+                    #if os(iOS)
                     .textInputAutocapitalization(.never)
+                    #endif
                     .textFieldStyle(.roundedBorder)
 
                     Button {

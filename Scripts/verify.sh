@@ -84,6 +84,8 @@ required=(
   Tests/SASLprepTests.swift
   Tests/SaslFailureMessageTests.swift
   Tests/MediaPreviewProcessorVideoTests.swift
+  Tests/SCRAMSHA512Tests.swift
+  Sources/Shared/XMPP/LumaScramSha512Mechanism.swift
   Sources/Shared/XMPP/SASLprep.swift
   Sources/Shared/XMPP/LumaSaslFailureModule.swift
   Sources/Shared/XMPP/SaslFailureMessage.swift
@@ -319,6 +321,14 @@ grep -q "doesn't match the one we calculated" Sources/Shared/XMPP/SaslFailureMes
 }
 grep -q 'passwordVisible' Sources/Shared/UI/LoginView.swift || {
   echo "The login screen must let the user verify the typed password"
+  exit 1
+}
+grep -q 'SCRAM-SHA-512' Sources/Shared/XMPP/LumaScramSha512Mechanism.swift || {
+  echo "The SCRAM-SHA-512 mechanism must be available"
+  exit 1
+}
+grep -q 'addMechanism(LumaScramSha512Mechanism' Sources/Shared/XMPP/XMPPService.swift || {
+  echo "SCRAM-SHA-512 must be registered ahead of Martin's mechanisms"
   exit 1
 }
 grep -q 'func deleteGroupChat' Sources/Shared/Models/AppModel.swift || {

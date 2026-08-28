@@ -15,7 +15,8 @@ and the Martin / MartinOMEMO libraries. The Xcode project is generated from
     SwiftData through `@Query` (`MainChatView`, `ChatView`,
     `ForwardMessageView`).
   - `XMPP/` — `XMPPService` (MAM/OMEMO/MUC), `LumaCallEngine`, OMEMO store,
-    `SASLprep` (RFC 4013), SASL failure observer/messages.
+    `SASLprep` (RFC 4013), SCRAM-SHA-512 mechanism, SASL failure
+    observer/messages.
   - `Persistence/` — `ArchiveStore` (per-account SwiftData container),
     `ArchiveMetadataRecord` (durable MAM checkpoint metadata),
     `LegacyArchiveImporter` (one-time legacy JSON snapshot migration),

@@ -26,6 +26,7 @@
 		0ECAB3E52DD12AD78AABE5F5 /* StaticDNSSrvResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8CABD9D1B4C987EF6AB19A6 /* StaticDNSSrvResolver.swift */; };
 		10273AF92A952B707C58AEE6 /* ArchiveSyncWorkBudgetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22A045770C3C55BC5ADC409B /* ArchiveSyncWorkBudgetTests.swift */; };
 		10C5382981A87A2963DD397C /* MediaMetadataTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A127BF01F5C488CD3E053379 /* MediaMetadataTests.swift */; };
+		127C4B7A5083081D22FD21CD /* LumaScramSha512Mechanism.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C16CFC03E7F478838A704FD /* LumaScramSha512Mechanism.swift */; };
 		12D3BEB345B65FB73DD3F560 /* ChatScrollPositionPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24F0A8A1646FDEE9C07FD9F0 /* ChatScrollPositionPolicyTests.swift */; };
 		137816B417A865C97F935A00 /* WebRTC in Frameworks */ = {isa = PBXBuildFile; productRef = EFCAF9B0DE67466AF22E76C3 /* WebRTC */; };
 		1655A2B7ACF4003EF41A1AB8 /* ConversationRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 758B448979C845F56168A51F /* ConversationRow.swift */; };
@@ -65,6 +66,7 @@
 		3375874DFCE22B22879112DD /* SystemPhotoCameraView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5198FF1E47790E498CC8C6F3 /* SystemPhotoCameraView.swift */; };
 		3BA375F1E0934FB4DD2148F9 /* SASLprep.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2446F6A1D00ADAD261D4CCD /* SASLprep.swift */; };
 		3BEF3895B4C84880B9103058 /* NewChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43A4CE3E678096BA76F2988C /* NewChatView.swift */; };
+		3BF0521699C170F8411386CD /* SCRAMSHA512Tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5078CBF0520AA3BE7D2E65E0 /* SCRAMSHA512Tests.swift */; };
 		3C2727D165D2EF1CC742EEF7 /* VideoNoteCaptureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0142FF4A1B05C373DAB4CDBE /* VideoNoteCaptureView.swift */; };
 		3CFEAC0C613CC9248DA8E35E /* ReplyThreadOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19C556A41E640592AF6376B6 /* ReplyThreadOverlay.swift */; };
 		3D3DDA2292673CE4FF397174 /* ServerInfoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBA20B768A9C675FABCDC821 /* ServerInfoView.swift */; };
@@ -212,6 +214,7 @@
 		E65D356ABC5320BBFB3E2F6E /* VideoNoteRecordingLifecycleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9FCE089ABBF05EF9F55D451 /* VideoNoteRecordingLifecycleTests.swift */; };
 		E67E0D2C3FBA2C3739B692E0 /* VideoAttachmentPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = A88E48AAC10463764CAD9835 /* VideoAttachmentPreview.swift */; };
 		E6890C743C5BBD0B287DDB53 /* ArchiveStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BA0E25A2B52BDED1C8B3B1B /* ArchiveStore.swift */; };
+		E6B279889E62AB9AD0C5BCE1 /* LumaScramSha512Mechanism.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C16CFC03E7F478838A704FD /* LumaScramSha512Mechanism.swift */; };
 		E9FA22C965454FA6890DC3D5 /* AvatarImageProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5746D1E21ABBBCFC6CD9694 /* AvatarImageProcessor.swift */; };
 		EBAF4861DD93FBEAA4B37D1C /* MediaViewerItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8F7B01C59E9667ADAFABBAC /* MediaViewerItem.swift */; };
 		ECAC4761F04316A71EC3C716 /* AttachmentDraft.swift in Sources */ = {isa = PBXBuildFile; fileRef = C04D749B7CA93CB7C59127D6 /* AttachmentDraft.swift */; };
@@ -319,6 +322,7 @@
 		4380219D3AF1D75EDF4D3167 /* MediaViewer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaViewer.swift; sourceTree = "<group>"; };
 		43A4CE3E678096BA76F2988C /* NewChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewChatView.swift; sourceTree = "<group>"; };
 		5003B4F9DF154543555E9825 /* RTCVideoRendererView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RTCVideoRendererView.swift; sourceTree = "<group>"; };
+		5078CBF0520AA3BE7D2E65E0 /* SCRAMSHA512Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SCRAMSHA512Tests.swift; sourceTree = "<group>"; };
 		515DD6F1F80A848C39EBAE84 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		5198FF1E47790E498CC8C6F3 /* SystemPhotoCameraView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemPhotoCameraView.swift; sourceTree = "<group>"; };
 		5886E1E233C129B9317D6059 /* CertificateTrustEvaluator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CertificateTrustEvaluator.swift; sourceTree = "<group>"; };
@@ -343,6 +347,7 @@
 		7846C2EEE2551C6690A4FDC6 /* Conversation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Conversation.swift; sourceTree = "<group>"; };
 		78E78CC8582C0399901D8A27 /* AttachmentPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentPreviewView.swift; sourceTree = "<group>"; };
 		7BD0A69BACDF8F0C43218AEB /* AudioMessageRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioMessageRecorder.swift; sourceTree = "<group>"; };
+		7C16CFC03E7F478838A704FD /* LumaScramSha512Mechanism.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LumaScramSha512Mechanism.swift; sourceTree = "<group>"; };
 		7C97DDD3DA8B45C3F2085661 /* MessageInteractionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageInteractionTests.swift; sourceTree = "<group>"; };
 		7C9866558B72CB1909A01EEC /* Shared.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Shared.xcassets; sourceTree = "<group>"; };
 		7F5960729C94DC995374CFD6 /* ComposerRecordingGestureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerRecordingGestureTests.swift; sourceTree = "<group>"; };
@@ -446,6 +451,7 @@
 				E9F226A1F8D82B39630F9CEB /* LumaRoomStore.swift */,
 				F92830FB64B5BD0A06BC828D /* LumaRosterStore.swift */,
 				C3E21A7D359AF7A7AF97D8DE /* LumaSaslFailureModule.swift */,
+				7C16CFC03E7F478838A704FD /* LumaScramSha512Mechanism.swift */,
 				69F4FFBFD65C218FF6505844 /* SaslFailureMessage.swift */,
 				B2446F6A1D00ADAD261D4CCD /* SASLprep.swift */,
 				F8CABD9D1B4C987EF6AB19A6 /* StaticDNSSrvResolver.swift */,
@@ -572,6 +578,7 @@
 				F6C7D0F207377DE99146A0D2 /* NotificationPolicyTests.swift */,
 				1F7B2B37E9E8E6A46ED7547A /* SaslFailureMessageTests.swift */,
 				13EFA01112297641B9B0EBC5 /* SASLprepTests.swift */,
+				5078CBF0520AA3BE7D2E65E0 /* SCRAMSHA512Tests.swift */,
 				9C8B12EFBC83F9235B6AF992 /* VideoNoteRecordingCompletionPolicyTests.swift */,
 				D9FCE089ABBF05EF9F55D451 /* VideoNoteRecordingLifecycleTests.swift */,
 				33F90AC63C822D9DF95D7B5C /* VideoNoteStopPolicyTests.swift */,
@@ -912,6 +919,7 @@
 				CBED8565C1313DC03D21A105 /* LumaRoomStore.swift in Sources */,
 				F1713D1CD4E019540BFA78FE /* LumaRosterStore.swift in Sources */,
 				0BD15E9B1C488AA2B7B56AF7 /* LumaSaslFailureModule.swift in Sources */,
+				E6B279889E62AB9AD0C5BCE1 /* LumaScramSha512Mechanism.swift in Sources */,
 				08696800299D2D7BCCBCAA58 /* MainChatView.swift in Sources */,
 				0E4CE634E1568EE121B8AF75 /* MediaFileIO.swift in Sources */,
 				2822384FC6AF9685C4D014C1 /* MediaMetadata.swift in Sources */,
@@ -1020,6 +1028,7 @@
 				03C65C3DAA1D8776AF496EFA /* LumaRoomStore.swift in Sources */,
 				7F4C00E98574C8E5193F442E /* LumaRosterStore.swift in Sources */,
 				C1AB954660804F7925607038 /* LumaSaslFailureModule.swift in Sources */,
+				127C4B7A5083081D22FD21CD /* LumaScramSha512Mechanism.swift in Sources */,
 				7DA3177772595E37DC8066E4 /* MainChatView.swift in Sources */,
 				EFC29F3543B1371E63D48510 /* MediaFileIO.swift in Sources */,
 				AFCBFB59F729DE95E453A7D3 /* MediaMetadata.swift in Sources */,
@@ -1095,6 +1104,7 @@
 				0535722A2D4FC893F16D78F1 /* MessageReplySwipeTests.swift in Sources */,
 				9E98F99F3FBFC9DAB99A3650 /* NotificationPolicyTests.swift in Sources */,
 				1B7C9F60AA7BFF6A2C0FE45D /* SASLprepTests.swift in Sources */,
+				3BF0521699C170F8411386CD /* SCRAMSHA512Tests.swift in Sources */,
 				3DDB1B15BCE5B58D12B60558 /* SaslFailureMessageTests.swift in Sources */,
 				FEB3A38F302E95303F0E8773 /* VideoNoteRecordingCompletionPolicyTests.swift in Sources */,
 				E65D356ABC5320BBFB3E2F6E /* VideoNoteRecordingLifecycleTests.swift in Sources */,

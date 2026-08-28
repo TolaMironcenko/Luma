@@ -1565,7 +1565,11 @@ final class XMPPService {
         // Registered before SaslModule so the raw RFC 6120 failure condition
         // is captured before Martin collapses it into SaslError.
         saslFailureModule = client.modulesManager.register(LumaSaslFailureModule())
-        _ = client.modulesManager.register(SaslModule())
+        // SCRAM-SHA-512 first: Martin only ships SHA-1/SHA-256, while modern
+        // servers prefer SHA-512. The server must advertise it or Martin's
+        // mechanism selection skips it.
+        let sasl = client.modulesManager.register(SaslModule())
+        sasl.addMechanism(LumaScramSha512Mechanism(), first: true)
         _ = client.modulesManager.register(ResourceBinderModule())
         _ = client.modulesManager.register(SessionEstablishmentModule())
         _ = client.modulesManager.register(
