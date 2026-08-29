@@ -14,10 +14,13 @@ struct MessageReplySwipePolicy {
     static let followDominance: CGFloat = 1.05
 
     /// Whether this translation can lock the gesture as a horizontal swipe.
-    /// Only right-to-left (swipe left, negative width) is accepted; the
-    /// opposite direction is deliberately left to the scroll view.
+    /// Only right-to-left (swipe left, negative width) is accepted, and the
+    /// lock is only available early: once the finger has travelled mostly
+    /// vertically the scroll view owns the touch and the swipe must never
+    /// activate for the rest of that gesture.
     static func canLock(_ translation: CGSize) -> Bool {
         translation.width < 0
+            && abs(translation.height) <= 24
             && isHorizontal(translation, dominance: lockDominance)
             && abs(translation.width) >= activationDistance * 0.5
     }

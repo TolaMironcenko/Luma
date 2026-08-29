@@ -28,6 +28,7 @@ struct MessageBubble: View {
     @State private var replySwipeOffset: CGFloat = 0
     @State private var replySwipeArmed = false
     @State private var replySwipeLocked = false
+    @State private var scrollOwnsGesture = false
 
     var body: some View {
         ZStack {
@@ -38,6 +39,7 @@ struct MessageBubble: View {
         .frame(maxWidth: .infinity)
         .background(isSelected ? Color.accentColor.opacity(0.1) : Color.clear)
         .contentShape(Rectangle())
+        .accessibilityIdentifier("bubble-\(message.clientID)")
         .onTapGesture {
             guard isSelectionMode else { return }
             onToggleSelection()
@@ -55,6 +57,7 @@ struct MessageBubble: View {
             replySwipeOffset = 0
             replySwipeArmed = false
             replySwipeLocked = false
+            scrollOwnsGesture = false
         }
         .contextMenu {
             if !isSelectionMode {
@@ -178,12 +181,20 @@ struct MessageBubble: View {
     private var replySwipeGesture: some Gesture {
         DragGesture(minimumDistance: 20)
             .onChanged { value in
-                // Once the gesture is clearly horizontal it locks in, so a
-                // slightly diagonal finish can neither break the reply swipe
-                // nor let the scroll view steal it.
-                if !replySwipeLocked, MessageReplySwipePolicy.canLock(value.translation) {
-                    replySwipeLocked = true
+                // Arbitration: once the touch is clearly vertical the scroll
+                // view owns it for good, so a later horizontal arc can never
+                // move bubbles mid-scroll. A reply swipe locks in only while
+                // the finger is still moving mostly horizontally.
+                if !replySwipeLocked, !scrollOwnsGesture {
+                    if MessageReplySwipePolicy.canLock(value.translation) {
+                        replySwipeLocked = true
+                    } else if abs(value.translation.height) > 16,
+                        abs(value.translation.width) < abs(value.translation.height)
+                    {
+                        scrollOwnsGesture = true
+                    }
                 }
+                guard replySwipeLocked, !scrollOwnsGesture else { return }
                 let offset = MessageReplySwipePolicy.offset(
                     locked: replySwipeLocked,
                     translation: value.translation
@@ -212,12 +223,19 @@ struct MessageBubble: View {
                 replySwipeArmed = armed
             }
             .onEnded { value in
-                let shouldReply = MessageReplySwipePolicy.shouldReply(
-                    locked: replySwipeLocked,
-                    translation: value.translation,
-                    predictedEndTranslation: value.predictedEndTranslation
-                )
+                // The lock is a hint, not a requirement: a fast flick may
+                // deliver no intermediate frame that passes canLock, yet its
+                // end state is still a clear leftward swipe. scrollOwnsGesture
+                // alone protects the timeline from reply activation.
+                let shouldReply =
+                    !scrollOwnsGesture
+                    && MessageReplySwipePolicy.shouldReply(
+                        locked: replySwipeLocked,
+                        translation: value.translation,
+                        predictedEndTranslation: value.predictedEndTranslation
+                    )
                 replySwipeLocked = false
+                scrollOwnsGesture = false
                 if replySwipeOffset != 0 || replySwipeArmed {
                     withAnimation(.spring(response: 0.24, dampingFraction: 0.82)) {
                         replySwipeOffset = 0

@@ -64,6 +64,17 @@
                ReferencedContainer = "container:Luma.xcodeproj">
             </BuildableReference>
          </TestableReference>
+         <TestableReference
+            skipped = "NO"
+            parallelizable = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "A086B6D25E7969CB643F1C8A"
+               BuildableName = "LumaUITests.xctest"
+               BlueprintName = "LumaUITests"
+               ReferencedContainer = "container:Luma.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
       </Testables>
       <CommandLineArguments>
       </CommandLineArguments>

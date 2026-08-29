@@ -107,6 +107,13 @@ final class MessageReplySwipeTests: XCTestCase {
         XCTAssertFalse(MessageReplySwipePolicy.canLock(CGSize(width: 40, height: 4)))
     }
 
+    func testCanLockIsUnavailableOnceTheGestureTurnsVertical() {
+        // A scroll that arcs left after travelling down must never lock the
+        // swipe: the vertical travel already exceeds the lock budget.
+        XCTAssertFalse(MessageReplySwipePolicy.canLock(CGSize(width: -30, height: 40)))
+        XCTAssertFalse(MessageReplySwipePolicy.canLock(CGSize(width: -80, height: 60)))
+    }
+
     func testLockedSwipeToleratesVerticalDrift() {
         // Once locked the finger may drift: a 1.17 ratio would be rejected
         // by the 1.6 lock dominance but must still count as a reply swipe.

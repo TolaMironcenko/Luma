@@ -87,6 +87,7 @@ required=(
   Tests/SCRAMSHA512Tests.swift
   Tests/AppLockPolicyTests.swift
   Tests/CallHistorySyncTests.swift
+  UITests/TimelineUITests.swift
   Sources/Shared/XMPP/LumaScramSha512Mechanism.swift
   Sources/Shared/XMPP/CallHistorySync.swift
   Sources/Shared/Security/AppLockVault.swift
@@ -387,6 +388,10 @@ grep -q 'pickerResetToken' Sources/Shared/UI/ChatView.swift || {
 }
 grep -q 'let items = pickedMediaItems' Sources/Shared/UI/ChatView.swift || {
   echo "Gallery staging must run on picker dismissal only"
+  exit 1
+}
+grep -q 'connectionStatus == .connected' Sources/Shared/Models/AppModel.swift || {
+  echo "Older-history loads must skip silently while disconnected"
   exit 1
 }
 grep -q 'onDismissRequest' Sources/Shared/UI/SystemPhotoCameraView.swift || {

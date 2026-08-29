@@ -628,6 +628,7 @@ struct ChatView: View {
                     .onChange(of: messages) { _, newMessages in
                         rebuildTimelineEntries(from: newMessages)
                     }
+                    .accessibilityIdentifier("chat-timeline")
                     #if os(macOS)
                         .onPreferenceChange(TimelineBottomYPreferenceKey.self) {
                             bottomY in
@@ -1851,6 +1852,7 @@ struct ChatView: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Отменить ответ")
         }
+        .accessibilityIdentifier("reply-banner")
         //        .padding(.horizontal, 12)
         //        .padding(.vertical, 8)
         //        .background(

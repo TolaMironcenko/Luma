@@ -301,6 +301,9 @@ final class AppModel: ObservableObject {
     }
 
     func bootstrap() async {
+#if DEBUG
+        if applyUITestChatIfRequested() { return }
+#endif
         guard !RuntimeEnvironment.isRunningTests else { return }
         guard let saved = preferences.load() else { return }
         prepareStore(for: saved.normalizedJID)
@@ -458,6 +461,55 @@ final class AppModel: ObservableObject {
             errorMessage = error.localizedDescription
         }
     }
+
+#if DEBUG
+    /// UI-test mode: seeds an in-memory conversation with numbered messages
+    /// so XCUITests can exercise timeline scrolling and the reply swipe
+    /// without an XMPP server. Activated with the `-luma-ui-test-chat`
+    /// launch argument.
+    private func applyUITestChatIfRequested() -> Bool {
+        guard ProcessInfo.processInfo.arguments.contains("-luma-ui-test-chat") else {
+            return false
+        }
+        let account = AccountConfiguration(
+            jid: "uitest@example.org",
+            displayName: "UI Test",
+            resource: "uitest"
+        )
+        self.account = account
+        let conversation = Conversation(
+            jid: "peer@example.org",
+            displayName: "uitest-peer",
+            lastMessage: "Тестовое сообщение номер 60",
+            lastActivity: Date(),
+            kind: .direct
+        )
+        modelContext.insert(conversation)
+        conversations = [conversation]
+        let base = Date(timeIntervalSince1970: 1_700_000_000)
+        var seeded: [ChatMessage] = []
+        for index in 1...60 {
+            let outgoing = index.isMultiple(of: 2)
+            let message = ChatMessage(
+                id: "uitest-msg-\(index)",
+                conversationID: conversation.jid,
+                senderJID: outgoing ? account.normalizedJID : conversation.jid,
+                body: "Тестовое сообщение номер \(index)",
+                timestamp: base.addingTimeInterval(TimeInterval(index * 60)),
+                direction: outgoing ? .outgoing : .incoming,
+                delivery: .sent,
+                security: .plaintext,
+                kind: .text
+            )
+            modelContext.insert(message)
+            seeded.append(message)
+        }
+        messages = seeded
+        rebuildMessageIndex()
+        selectedConversationID = conversation.jid
+        return true
+    }
+#endif
 
     func setApplicationActive(_ active: Bool) {
         appIsActive = active
@@ -654,8 +706,13 @@ final class AppModel: ObservableObject {
     }
     
     func loadOlderHistoryForSelectedConversation() {
+        // While disconnected the request would only fail with
+        // "not connected", which used to pop the global alert right over
+        // the timeline and blocked scrolling. Skip silently instead: the
+        // trigger re-fires once the connection is back.
         guard !isLoadingOlderHistory,
               hasMoreOlderHistory,
+              connectionStatus == .connected,
               let conversation = selectedConversation else { return }
         //        let oldestServerID = selectedMessages
         //            .sorted { lhs, rhs in

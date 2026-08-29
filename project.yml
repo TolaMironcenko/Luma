@@ -188,6 +188,19 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: app.luma.chat.tests
         GENERATE_INFOPLIST_FILE: true
 
+  LumaUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: UITests
+    dependencies:
+      - target: Luma
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.luma.chat.uitests
+        GENERATE_INFOPLIST_FILE: true
+
 schemes:
   Luma:
     build:
@@ -200,6 +213,7 @@ schemes:
       config: Debug
       targets:
         - LumaTests
+        - LumaUITests
     archive:
       config: Release
   LumaMac:
