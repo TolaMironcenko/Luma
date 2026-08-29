@@ -27,6 +27,7 @@ struct MessageBubble: View {
 
     @State private var replySwipeOffset: CGFloat = 0
     @State private var replySwipeArmed = false
+    @State private var replySwipeLocked = false
 
     var body: some View {
         ZStack {
@@ -53,6 +54,7 @@ struct MessageBubble: View {
             guard selecting else { return }
             replySwipeOffset = 0
             replySwipeArmed = false
+            replySwipeLocked = false
         }
         .contextMenu {
             if !isSelectionMode {
@@ -176,7 +178,16 @@ struct MessageBubble: View {
     private var replySwipeGesture: some Gesture {
         DragGesture(minimumDistance: 20)
             .onChanged { value in
-                let offset = MessageReplySwipePolicy.offset(for: value.translation)
+                // Once the gesture is clearly horizontal it locks in, so a
+                // slightly diagonal finish can neither break the reply swipe
+                // nor let the scroll view steal it.
+                if !replySwipeLocked, MessageReplySwipePolicy.canLock(value.translation) {
+                    replySwipeLocked = true
+                }
+                let offset = MessageReplySwipePolicy.offset(
+                    locked: replySwipeLocked,
+                    translation: value.translation
+                )
                 guard offset != 0 else {
                     // Vertical (or not clearly horizontal) movement: snap the
                     // indicator back and never publish per-cell state changes
@@ -191,6 +202,7 @@ struct MessageBubble: View {
                 }
                 replySwipeOffset = offset
                 let armed = MessageReplySwipePolicy.shouldReply(
+                    locked: replySwipeLocked,
                     translation: value.translation,
                     predictedEndTranslation: value.translation
                 )
@@ -201,9 +213,11 @@ struct MessageBubble: View {
             }
             .onEnded { value in
                 let shouldReply = MessageReplySwipePolicy.shouldReply(
+                    locked: replySwipeLocked,
                     translation: value.translation,
                     predictedEndTranslation: value.predictedEndTranslation
                 )
+                replySwipeLocked = false
                 if replySwipeOffset != 0 || replySwipeArmed {
                     withAnimation(.spring(response: 0.24, dampingFraction: 0.82)) {
                         replySwipeOffset = 0

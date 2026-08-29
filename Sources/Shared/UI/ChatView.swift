@@ -1,11 +1,11 @@
 import CoreTransferable
 import Foundation
 import ImageIO
-import os
 import PhotosUI
 import SwiftData
 import SwiftUI
 import UniformTypeIdentifiers
+import os
 
 #if os(iOS)
     import UIKit
@@ -104,17 +104,23 @@ struct ChatView: View {
         _showingGroupInfo = State(initialValue: false)
         _showingAttachmentPreview = State(initialValue: false)
         _attachmentPreviewPresentationPending = State(initialValue: false)
-        _attachmentPreviewPresentationTask = State<Task<Void, Never>?>(initialValue: nil)
+        _attachmentPreviewPresentationTask = State<Task<Void, Never>?>(
+            initialValue: nil
+        )
         _pickedMediaItems = State<[PhotosPickerItem]>(initialValue: [])
         _attachmentDrafts = State<[AttachmentDraft]>(initialValue: [])
         _isPreparingAttachments = State(initialValue: false)
         _editingMessageID = State<String?>(initialValue: nil)
         _replyingToMessageID = State<String?>(initialValue: nil)
-        _forwardingSelection = State<MessageForwardSelection?>(initialValue: nil)
+        _forwardingSelection = State<MessageForwardSelection?>(
+            initialValue: nil
+        )
         _selectedMessageIDs = State<Set<String>>(initialValue: [])
         _destructiveAction = State<MessageDestructiveAction?>(initialValue: nil)
         _replyThreadSelection = State<ReplyThreadSelection?>(initialValue: nil)
-        _emojiPickerPresentation = State<EmojiPickerPresentation?>(initialValue: nil)
+        _emojiPickerPresentation = State<EmojiPickerPresentation?>(
+            initialValue: nil
+        )
         _hasCompletedInitialScroll = State(initialValue: false)
         _isNearTimelineBottom = State(initialValue: true)
         _historyLoadAnchorID = State<String?>(initialValue: nil)
@@ -175,7 +181,9 @@ struct ChatView: View {
                                 Button {
                                     Task {
                                         await model.startCall(
-                                            to: conversation.jid, withVideo: false)
+                                            to: conversation.jid,
+                                            withVideo: false
+                                        )
                                     }
                                 } label: {
                                     Label("Аудиозвонок", systemImage: "phone")
@@ -185,7 +193,10 @@ struct ChatView: View {
 
                                 Button {
                                     Task {
-                                        await model.startCall(to: conversation.jid, withVideo: true)
+                                        await model.startCall(
+                                            to: conversation.jid,
+                                            withVideo: true
+                                        )
                                     }
                                 } label: {
                                     Label("Видеозвонок", systemImage: "video")
@@ -211,7 +222,10 @@ struct ChatView: View {
             }
         }
         #if os(iOS)
-            .toolbar(replyThreadSelection == nil ? .visible : .hidden, for: .navigationBar)
+            .toolbar(
+                replyThreadSelection == nil ? .visible : .hidden,
+                for: .navigationBar
+            )
         #endif
         .fileImporter(
             isPresented: $showingFileImporter,
@@ -220,7 +234,9 @@ struct ChatView: View {
         ) { result in
             guard case .success(let urls) = result else { return }
             let preferredKind = fileImportMode.preferredKind
-            Task { await stageImportedFiles(urls, preferredKind: preferredKind) }
+            Task {
+                await stageImportedFiles(urls, preferredKind: preferredKind)
+            }
         }
         .photosPicker(
             isPresented: $showingMediaPicker,
@@ -378,7 +394,10 @@ struct ChatView: View {
     @ViewBuilder
     private var replyThreadOverlay: some View {
         if let selection = replyThreadSelection,
-            let root = model.message(withID: selection.rootID, in: conversation.jid)
+            let root = model.message(
+                withID: selection.rootID,
+                in: conversation.jid
+            )
         {
             ReplyThreadOverlay(
                 model: model,
@@ -396,12 +415,21 @@ struct ChatView: View {
 
     private var encryptionMenu: some View {
         Menu {
-            Section(conversation.isGroup ? "Шифрование этой группы" : "Шифрование этого чата") {
-                ForEach(EncryptionPreference.allCases, id: \.rawValue) { preference in
+            Section(
+                conversation.isGroup
+                    ? "Шифрование этой группы" : "Шифрование этого чата"
+            ) {
+                ForEach(EncryptionPreference.allCases, id: \.rawValue) {
+                    preference in
                     Button {
-                        model.setEncryptionPreference(preference, for: conversation.jid)
+                        model.setEncryptionPreference(
+                            preference,
+                            for: conversation.jid
+                        )
                     } label: {
-                        if model.encryptionPreference(for: conversation.jid) == preference {
+                        if model.encryptionPreference(for: conversation.jid)
+                            == preference
+                        {
                             Label(preference.title, systemImage: "checkmark")
                         } else {
                             Text(preference.title)
@@ -414,13 +442,19 @@ struct ChatView: View {
                 Button {
                     showingEncryption = true
                 } label: {
-                    Label("Устройства и отпечатки", systemImage: "checkmark.shield")
+                    Label(
+                        "Устройства и отпечатки",
+                        systemImage: "checkmark.shield"
+                    )
                 }
             }
         } label: {
             Label("Шифрование", systemImage: encryptionIcon)
         }
-        .help(encryptionEnabled ? "OMEMO включено" : "Сообщения отправляются без OMEMO")
+        .help(
+            encryptionEnabled
+                ? "OMEMO включено" : "Сообщения отправляются без OMEMO"
+        )
     }
 
     private var canStartCall: Bool {
@@ -428,10 +462,13 @@ struct ChatView: View {
     }
 
     private var selectedTimelineMessages: [ChatMessage] {
-        model.selectedMessages.filter { selectedMessageIDs.contains($0.clientID) }
+        model.selectedMessages.filter {
+            selectedMessageIDs.contains($0.clientID)
+        }
     }
 
-    private func rebuildTimelineEntries(from newMessages: [ChatMessage]? = nil) {
+    private func rebuildTimelineEntries(from newMessages: [ChatMessage]? = nil)
+    {
         timelineEntries = ChatTimelineEntry.make(from: newMessages ?? messages)
     }
 
@@ -457,8 +494,10 @@ struct ChatView: View {
                                             !model.isLoadingOlderHistory
                                         else { return }
                                         historyTopTriggerArmed = false
-                                        historyLoadAnchorID = timelineEntries.first?.id
-                                        model.loadOlderHistoryForSelectedConversation()
+                                        historyLoadAnchorID =
+                                            timelineEntries.first?.id
+                                        model
+                                            .loadOlderHistoryForSelectedConversation()
                                     }
                                     .onDisappear {
                                         historyTopTriggerArmed = true
@@ -474,7 +513,8 @@ struct ChatView: View {
                                     emptyChatTitle,
                                     systemImage: conversation.isGroup
                                         ? "person.3.fill"
-                                        : (encryptionEnabled ? "lock.shield" : "lock.open"),
+                                        : (encryptionEnabled
+                                            ? "lock.shield" : "lock.open"),
                                     description: Text(emptyChatDescription)
                                 )
                                 .padding(.top, 80)
@@ -484,7 +524,8 @@ struct ChatView: View {
                                     guard model.hasMoreOlderHistory,
                                         !model.isLoadingOlderHistory
                                     else { return }
-                                    model.loadOlderHistoryForSelectedConversation()
+                                    model
+                                        .loadOlderHistoryForSelectedConversation()
                                 }
                             } else {
                                 ForEach(timelineEntries) { entry in
@@ -496,37 +537,65 @@ struct ChatView: View {
                                         model: model,
                                         message: message,
                                         isSelectionMode: isSelectingMessages,
-                                        isSelected: selectedMessageIDs.contains(message.clientID),
+                                        isSelected: selectedMessageIDs.contains(
+                                            message.clientID
+                                        ),
                                         onAttachmentTap: {
-                                            Task { await model.previewAttachment(message) }
+                                            Task {
+                                                await model.previewAttachment(
+                                                    message
+                                                )
+                                            }
                                         },
                                         onEdit: { startEditing(message) },
                                         onReply: { startReplying(to: message) },
-                                        onForward: { presentForwarding([message]) },
-                                        onRetry: {
-                                            Task { await model.retryMediaMessage(message) }
+                                        onForward: {
+                                            presentForwarding([message])
                                         },
-                                        onToggleSelection: { toggleMessageSelection(message) },
-                                        onBeginSelection: { beginMessageSelection(with: message) },
+                                        onRetry: {
+                                            Task {
+                                                await model.retryMediaMessage(
+                                                    message
+                                                )
+                                            }
+                                        },
+                                        onToggleSelection: {
+                                            toggleMessageSelection(message)
+                                        },
+                                        onBeginSelection: {
+                                            beginMessageSelection(with: message)
+                                        },
                                         onRetract: {
                                             destructiveAction = .init(
-                                                kind: .retract, messages: [message])
+                                                kind: .retract,
+                                                messages: [message]
+                                            )
                                         },
                                         onDelete: {
                                             destructiveAction = .init(
-                                                kind: .localDelete, messages: [message])
+                                                kind: .localDelete,
+                                                messages: [message]
+                                            )
                                         },
                                         onReplyTap: { targetID in
                                             presentReplyThread(
                                                 rootID: targetID,
-                                                selectedReplyID: message.clientID
+                                                selectedReplyID: message
+                                                    .clientID
                                             )
                                         },
                                         onReact: { emoji in
-                                            Task { await model.toggleReaction(emoji, on: message) }
+                                            Task {
+                                                await model.toggleReaction(
+                                                    emoji,
+                                                    on: message
+                                                )
+                                            }
                                         },
                                         onReactPicker: {
-                                            emojiPickerPresentation = .reaction(message)
+                                            emojiPickerPresentation = .reaction(
+                                                message
+                                            )
                                         }
                                     )
                                     .id(message.clientID)
@@ -537,8 +606,11 @@ struct ChatView: View {
 
                         timelineBottomSentinel
                         #if os(iOS)
-                            ChatScrollMetricsObserver(identity: conversation.jid) { isNearBottom in
-                                guard isNearTimelineBottom != isNearBottom else { return }
+                            ChatScrollMetricsObserver(
+                                identity: conversation.jid
+                            ) { isNearBottom in
+                                guard isNearTimelineBottom != isNearBottom
+                                else { return }
                                 isNearTimelineBottom = isNearBottom
                             }
                             .frame(height: 0)
@@ -557,7 +629,8 @@ struct ChatView: View {
                         rebuildTimelineEntries(from: newMessages)
                     }
                     #if os(macOS)
-                        .onPreferenceChange(TimelineBottomYPreferenceKey.self) { bottomY in
+                        .onPreferenceChange(TimelineBottomYPreferenceKey.self) {
+                            bottomY in
                             updateTimelineBottomProximity(
                                 bottomY: bottomY,
                                 viewportHeight: viewport.size.height
@@ -572,13 +645,16 @@ struct ChatView: View {
                             let newID,
                             newID != oldID,
                             isNearTimelineBottom
-                                || timelineEntries.last?.message.direction == .outgoing
+                                || timelineEntries.last?.message.direction
+                                    == .outgoing
                         else {
                             return
                         }
                         scrollToBottom(proxy, animated: true)
                     }
-                    .onChange(of: model.isLoadingOlderHistory) { wasLoading, isLoading in
+                    .onChange(of: model.isLoadingOlderHistory) {
+                        wasLoading,
+                        isLoading in
                         guard wasLoading, !isLoading,
                             let anchor = historyLoadAnchorID
                         else { return }
@@ -601,7 +677,9 @@ struct ChatView: View {
                         jumpToLatestButton(using: proxy)
                             .padding(.trailing, 14)
                             .padding(.bottom, 12)
-                            .transition(.scale(scale: 0.82).combined(with: .opacity))
+                            .transition(
+                                .scale(scale: 0.82).combined(with: .opacity)
+                            )
                             .zIndex(10)
                     }
                 }
@@ -698,12 +776,6 @@ struct ChatView: View {
 
     private var composer: some View {
         VStack(spacing: 8) {
-            if let editingMessage {
-                editingBanner(editingMessage)
-            } else if let replyingToMessage {
-                replyBanner(replyingToMessage)
-            }
-
             HStack(alignment: .bottom, spacing: 8) {
                 Group {
                     if isCapturePresentationVisible {
@@ -725,43 +797,60 @@ struct ChatView: View {
         }
         .padding(.top, 6)
         .background(Color.clear)
-        .animation(.easeInOut(duration: 0.18), value: isCapturePresentationVisible)
+        .animation(
+            .easeInOut(duration: 0.18),
+            value: isCapturePresentationVisible
+        )
     }
 
     private var messageInput: some View {
-        HStack(alignment: .bottom, spacing: 8) {
-            TextField(
-                editingMessageID == nil ? "Сообщение" : "Изменить сообщение",
-                text: $draft,
-                axis: .vertical
-            )
-            .focused($isComposerFocused)
-            .lineLimit(1...6)
-            .textFieldStyle(.plain)
-            .submitLabel(.send)
-            .onSubmit { sendDraft() }
-
-            Button {
-                emojiPickerPresentation = .composer
-            } label: {
-                Image(systemName: "face.smiling")
-                    .font(.system(size: 20, weight: .regular))
-                    .foregroundStyle(.secondary)
-                    .padding(.bottom, 1)
+        VStack {
+            if let editingMessage {
+                editingBanner(editingMessage)
+            } else if let replyingToMessage {
+                replyBanner(replyingToMessage)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Эмодзи")
+            HStack(alignment: .bottom, spacing: 8) {
+                TextField(
+                    editingMessageID == nil
+                        ? "Сообщение" : "Изменить сообщение",
+                    text: $draft,
+                    axis: .vertical
+                )
+                .focused($isComposerFocused)
+                .lineLimit(1...6)
+                .textFieldStyle(.plain)
+                .submitLabel(.send)
+                .onSubmit { sendDraft() }
+
+                Button {
+                    emojiPickerPresentation = .composer
+                } label: {
+                    Image(systemName: "face.smiling")
+                        .font(.system(size: 20, weight: .regular))
+                        .foregroundStyle(.secondary)
+                        .padding(.bottom, 1)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Эмодзи")
+            }
         }
         .padding(.leading, 14)
         .padding(.trailing, 12)
         .padding(.vertical, 9)
         .frame(minHeight: 42)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 21, style: .continuous))
+        .background(
+            .ultraThinMaterial,
+            in: RoundedRectangle(cornerRadius: 21, style: .continuous)
+        )
         .overlay(
             RoundedRectangle(cornerRadius: 21, style: .continuous)
                 .stroke(
                     LinearGradient(
-                        colors: [Color.white.opacity(0.3), Color.secondary.opacity(0.18)],
+                        colors: [
+                            Color.white.opacity(0.3),
+                            Color.secondary.opacity(0.18),
+                        ],
                         startPoint: .top,
                         endPoint: .bottom
                     ),
@@ -778,18 +867,25 @@ struct ChatView: View {
             Button(action: sendDraft) {
                 Image(systemName: "arrow.up")
                     .font(.system(size: 18, weight: .bold))
-                    .foregroundStyle(canUseComposer ? Color.accentColor : Color.secondary)
+                    .foregroundStyle(
+                        canUseComposer ? Color.accentColor : Color.secondary
+                    )
                     .frame(width: 42, height: 42)
                     .background(.ultraThinMaterial, in: Circle())
                     .overlay(
                         Circle()
-                            .stroke(Color.secondary.opacity(0.2), lineWidth: 0.75)
+                            .stroke(
+                                Color.secondary.opacity(0.2),
+                                lineWidth: 0.75
+                            )
                     )
                     .shadow(color: .black.opacity(0.075), radius: 8, y: 2)
             }
             .buttonStyle(.plain)
             .disabled(!canUseComposer)
-            .accessibilityLabel(editingMessageID == nil ? "Отправить" : "Сохранить исправление")
+            .accessibilityLabel(
+                editingMessageID == nil ? "Отправить" : "Сохранить исправление"
+            )
         } else {
             TelegramRecordButton(
                 mode: .voice,
@@ -808,7 +904,16 @@ struct ChatView: View {
             .overlay(alignment: .top) {
                 if isCapturePresentationVisible, !captureIsLocked {
                     recordingLockIndicator
-                        .offset(y: -74 + min(12, max(-14, captureDragTranslation.height * 0.12)))
+                        .offset(
+                            y: -74
+                                + min(
+                                    12,
+                                    max(
+                                        -14,
+                                        captureDragTranslation.height * 0.12
+                                    )
+                                )
+                        )
                         .transition(.scale.combined(with: .opacity))
                 }
             }
@@ -829,7 +934,10 @@ struct ChatView: View {
                 dismissKeyboard()
                 showingMediaPicker = true
             } label: {
-                Label("Фото или видео (несколько)", systemImage: "photo.on.rectangle")
+                Label(
+                    "Фото или видео (несколько)",
+                    systemImage: "photo.on.rectangle"
+                )
             }
             Button {
                 presentFileImporter(.audio)
@@ -860,7 +968,10 @@ struct ChatView: View {
                     .fill(.ultraThinMaterial)
                     .overlay(
                         Circle()
-                            .stroke(Color.secondary.opacity(0.18), lineWidth: 0.75)
+                            .stroke(
+                                Color.secondary.opacity(0.18),
+                                lineWidth: 0.75
+                            )
                     )
                 if model.isSendingAttachment || isPreparingAttachments {
                     ProgressView()
@@ -877,7 +988,9 @@ struct ChatView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Добавить вложение")
-        .help("Открыть камеру или добавить фото, видео, файлы, музыку и геопозицию")
+        .help(
+            "Открыть камеру или добавить фото, видео, файлы, музыку и геопозицию"
+        )
     }
 
     private var editingMessage: ChatMessage? {
@@ -893,7 +1006,8 @@ struct ChatView: View {
     }
 
     private var requiresOMEMO: Bool {
-        editingMessage?.security == .omemo || (editingMessageID == nil && encryptionEnabled)
+        editingMessage?.security == .omemo
+            || (editingMessageID == nil && encryptionEnabled)
     }
 
     private var encryptionEnabled: Bool {
@@ -902,11 +1016,13 @@ struct ChatView: View {
 
     private var encryptionIcon: String {
         if !encryptionEnabled { return "lock.open" }
-        return model.isOMEMOReady ? "lock.fill" : "lock.trianglebadge.exclamationmark"
+        return model.isOMEMOReady
+            ? "lock.fill" : "lock.trianglebadge.exclamationmark"
     }
 
     private var liveConversation: Conversation {
-        model.conversations.first(where: { $0.jid == conversation.jid }) ?? conversation
+        model.conversations.first(where: { $0.jid == conversation.jid })
+            ?? conversation
     }
 
     private var chatNavigationTitle: some View {
@@ -922,7 +1038,10 @@ struct ChatView: View {
                     .transition(.opacity)
             }
         }
-        .animation(.easeInOut(duration: 0.16), value: model.typingText(for: liveConversation))
+        .animation(
+            .easeInOut(duration: 0.16),
+            value: model.typingText(for: liveConversation)
+        )
         .accessibilityElement(children: .combine)
         .padding()
     }
@@ -933,7 +1052,8 @@ struct ChatView: View {
 
     private var emptyChatTitle: String {
         if conversation.isGroup { return "Групповая комната" }
-        return encryptionEnabled ? "Новый защищённый чат" : "Новый чат без шифрования"
+        return encryptionEnabled
+            ? "Новый защищённый чат" : "Новый чат без шифрования"
     }
 
     private var emptyChatDescription: String {
@@ -949,8 +1069,11 @@ struct ChatView: View {
 
     private var groupJoinBanner: some View {
         HStack(spacing: 10) {
-            Image(systemName: liveConversation.invitedBy == nil ? "person.3" : "envelope.badge")
-                .foregroundStyle(.tint)
+            Image(
+                systemName: liveConversation.invitedBy == nil
+                    ? "person.3" : "envelope.badge"
+            )
+            .foregroundStyle(.tint)
             VStack(alignment: .leading, spacing: 2) {
                 Text(
                     liveConversation.invitedBy == nil
@@ -1003,7 +1126,9 @@ struct ChatView: View {
     }
 
     private var recordingCancelHintOpacity: Double {
-        ComposerRecordingGesturePolicy.cancelHintOpacity(for: captureDragTranslation)
+        ComposerRecordingGesturePolicy.cancelHintOpacity(
+            for: captureDragTranslation
+        )
     }
 
     private var recordingStatusStrip: some View {
@@ -1037,7 +1162,10 @@ struct ChatView: View {
         }
         .padding(.horizontal, 13)
         .frame(minHeight: 42)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 21, style: .continuous))
+        .background(
+            .ultraThinMaterial,
+            in: RoundedRectangle(cornerRadius: 21, style: .continuous)
+        )
         .overlay(
             RoundedRectangle(cornerRadius: 21, style: .continuous)
                 .stroke(Color.secondary.opacity(0.2), lineWidth: 0.75)
@@ -1054,7 +1182,9 @@ struct ChatView: View {
         .foregroundStyle(.primary)
         .frame(width: 38, height: 55)
         .background(.ultraThinMaterial, in: Capsule())
-        .overlay(Capsule().stroke(Color.secondary.opacity(0.22), lineWidth: 0.75))
+        .overlay(
+            Capsule().stroke(Color.secondary.opacity(0.22), lineWidth: 0.75)
+        )
         .accessibilityLabel("Проведите вверх, чтобы зафиксировать запись")
     }
 
@@ -1224,7 +1354,9 @@ struct ChatView: View {
         draft = ""
         if let editingMessageID {
             self.editingMessageID = nil
-            Task { await model.editMessage(id: editingMessageID, newBody: outgoing) }
+            Task {
+                await model.editMessage(id: editingMessageID, newBody: outgoing)
+            }
         } else {
             let replyTarget = replyingToMessage
             replyingToMessageID = nil
@@ -1266,7 +1398,10 @@ struct ChatView: View {
         }
         let logger = Logger(subsystem: "Luma", category: "video-preview")
         await waitForCameraFileSettling(at: media.url, logger: logger)
-        let staged = await stageImportedFiles([media.url], preferredKind: media.kind)
+        let staged = await stageImportedFiles(
+            [media.url],
+            preferredKind: media.kind
+        )
         if staged {
             if let draft = attachmentDrafts.last {
                 logger.info(
@@ -1276,7 +1411,8 @@ struct ChatView: View {
         } else {
             logger.error("camera staging produced no drafts")
             if model.errorMessage == nil {
-                model.errorMessage = "Камера вернула файл, который не удалось подготовить к отправке."
+                model.errorMessage =
+                    "Камера вернула файл, который не удалось подготовить к отправке."
             }
         }
     }
@@ -1285,13 +1421,19 @@ struct ChatView: View {
     /// flushed. Wait until the file size stops changing so staging never
     /// copies a truncated file.
     private func waitForCameraFileSettling(at url: URL, logger: Logger) async {
-        guard let initial = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize else {
+        guard
+            let initial = try? url.resourceValues(forKeys: [.fileSizeKey])
+                .fileSize
+        else {
             return
         }
         var previous = initial
         for _ in 0..<10 {
             try? await Task.sleep(nanoseconds: 250_000_000)
-            guard let current = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize else {
+            guard
+                let current = try? url.resourceValues(forKeys: [.fileSizeKey])
+                    .fileSize
+            else {
                 return
             }
             if current == previous {
@@ -1339,7 +1481,8 @@ struct ChatView: View {
         }
     }
 
-    private func sendRecordedVideoNote(_ recording: VideoNoteRecorder.Recording) {
+    private func sendRecordedVideoNote(_ recording: VideoNoteRecorder.Recording)
+    {
         videoNoteIsSending = true
         Task { @MainActor in
             defer {
@@ -1372,7 +1515,8 @@ struct ChatView: View {
 
     private func presentReplyThread(rootID: String, selectedReplyID: String) {
         guard model.message(withID: rootID, in: conversation.jid) != nil else {
-            model.errorMessage = "Исходное сообщение ещё не загружено в локальную историю."
+            model.errorMessage =
+                "Исходное сообщение ещё не загружено в локальную историю."
             return
         }
         withAnimation(.easeOut(duration: 0.2)) {
@@ -1404,12 +1548,17 @@ struct ChatView: View {
             return sourceIdentifiers.contains(replyToID)
         }
         if !replies.contains(where: { $0.clientID == selectedReplyID }),
-            let selected = model.message(withID: selectedReplyID, in: conversation.jid)
+            let selected = model.message(
+                withID: selectedReplyID,
+                in: conversation.jid
+            )
         {
             replies.append(selected)
         }
         return replies.sorted { lhs, rhs in
-            if lhs.timestamp == rhs.timestamp { return lhs.clientID < rhs.clientID }
+            if lhs.timestamp == rhs.timestamp {
+                return lhs.clientID < rhs.clientID
+            }
             return lhs.timestamp < rhs.timestamp
         }
     }
@@ -1441,7 +1590,8 @@ struct ChatView: View {
         }
 
         guard !sourceURLs.isEmpty else {
-            model.errorMessage = MediaPickerError.cannotReadSelection.errorDescription
+            model.errorMessage =
+                MediaPickerError.cannotReadSelection.errorDescription
             return
         }
         failedItemCount += max(0, sourceURLs.count - prepared.count)
@@ -1501,7 +1651,9 @@ struct ChatView: View {
         }
     }
 
-    private func loadPickedMediaFile(_ item: PhotosPickerItem) async throws -> URL {
+    private func loadPickedMediaFile(_ item: PhotosPickerItem) async throws
+        -> URL
+    {
         let supportsImage = item.supportedContentTypes.contains {
             $0.conforms(to: .image)
         }
@@ -1532,12 +1684,16 @@ struct ChatView: View {
     }
 
     private func loadPickedPhoto(_ item: PhotosPickerItem) async throws -> URL {
-        let fileRepresentation = try? await item.loadTransferable(type: PickedPhoto.self)
+        let fileRepresentation = try? await item.loadTransferable(
+            type: PickedPhoto.self
+        )
         if let photo = fileRepresentation {
             return photo.url
         }
 
-        let dataRepresentation = try await item.loadTransferable(type: Data.self)
+        let dataRepresentation = try await item.loadTransferable(
+            type: Data.self
+        )
         guard let data = dataRepresentation, !data.isEmpty else {
             throw MediaPickerError.cannotReadSelection
         }
@@ -1547,7 +1703,9 @@ struct ChatView: View {
     }
 
     private func loadPickedVideo(_ item: PhotosPickerItem) async throws -> URL {
-        guard let video = try await item.loadTransferable(type: PickedVideo.self) else {
+        guard
+            let video = try await item.loadTransferable(type: PickedVideo.self)
+        else {
             throw MediaPickerError.cannotReadSelection
         }
         return video.url
@@ -1637,8 +1795,8 @@ struct ChatView: View {
             Capsule()
                 .fill(Color.accentColor)
                 .frame(width: 3, height: 34)
-            Image(systemName: "pencil")
-                .foregroundStyle(.tint)
+//            Image(systemName: "pencil")
+//                .foregroundStyle(.tint)
             VStack(alignment: .leading, spacing: 1) {
                 Text("Редактирование")
                     .font(.caption.weight(.semibold))
@@ -1650,43 +1808,60 @@ struct ChatView: View {
             }
             Spacer()
             Button(action: cancelEditing) {
-                Image(systemName: "xmark.circle.fill")
+                Image(systemName: "xmark")
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Отменить редактирование")
         }
-        .padding(.horizontal, 14)
-        .padding(.top, 8)
+        //        .padding(.horizontal, 14)
+        //        .padding(.top, 8)
     }
 
+    /// Telegram-style reply plate: a rounded card above the composer with
+    /// the reply header, a close button and the quoted message preview.
     private func replyBanner(_ message: ChatMessage) -> some View {
-        HStack(spacing: 10) {
+        HStack(alignment: .center) {
             Capsule()
                 .fill(Color.accentColor)
-                .frame(width: 3, height: 36)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(
-                    "Ответ: \(message.senderDisplayName ?? model.displayName(for: message.senderJID))"
-                )
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.tint)
+                .frame(width: 3, height: 34)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 7) {
+//                    Image(systemName: "arrowshape.turn.up.left.fill")
+//                        .font(.caption.weight(.semibold))
+//                        .foregroundStyle(.tint)
+                    Text(
+                        "Ответ: \(message.senderDisplayName ?? model.displayName(for: message.senderJID))"
+                    )
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tint)
+                    .lineLimit(1)
+                }
                 Text(message.quotePreview)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.primary.opacity(0.8))
                     .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
             Spacer()
             Button(action: cancelReplying) {
-                Image(systemName: "xmark.circle.fill")
+                Image(systemName: "xmark")
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Отменить ответ")
         }
-        .padding(.horizontal, 14)
-        .padding(.top, 8)
-        .padding(.bottom, 3)
+        //        .padding(.horizontal, 12)
+        //        .padding(.vertical, 8)
+        //        .background(
+        //            .thinMaterial,
+        //            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+        //        )
+        //        .overlay {
+        //            RoundedRectangle(cornerRadius: 14, style: .continuous)
+        //                .stroke(Color.secondary.opacity(0.16), lineWidth: 0.75)
+        //        }
+        //        .padding(.horizontal, 10)
     }
 
     private func perform(_ action: MessageDestructiveAction) {
@@ -1751,7 +1926,9 @@ struct ChatView: View {
         }
     }
 
-    private func performInitialScrollAfterLayout(using proxy: ScrollViewProxy) async {
+    private func performInitialScrollAfterLayout(using proxy: ScrollViewProxy)
+        async
+    {
         guard !hasCompletedInitialScroll else { return }
         guard !model.selectedMessages.isEmpty else {
             // Empty conversation: there is nothing to scroll to, so the
@@ -1903,14 +2080,19 @@ private struct TimelineBottomYPreferenceKey: PreferenceKey {
                 detach()
                 observedScrollView = scrollView
                 observations = [
-                    scrollView.observe(\.contentOffset, options: [.initial, .new]) {
+                    scrollView.observe(
+                        \.contentOffset,
+                        options: [.initial, .new]
+                    ) {
                         [weak self] _, _ in
                         self?.scheduleMetricsReport()
                     },
-                    scrollView.observe(\.contentSize, options: [.new]) { [weak self] _, _ in
+                    scrollView.observe(\.contentSize, options: [.new]) {
+                        [weak self] _, _ in
                         self?.scheduleMetricsReport()
                     },
-                    scrollView.observe(\.bounds, options: [.new]) { [weak self] _, _ in
+                    scrollView.observe(\.bounds, options: [.new]) {
+                        [weak self] _, _ in
                         self?.scheduleMetricsReport()
                     },
                 ]
@@ -1960,7 +2142,9 @@ struct ComposerRecordingGesturePolicy {
     static let longPressDelayNanoseconds: UInt64 = 240_000_000
     static let minimumLongPressDuration: TimeInterval = 0.22
 
-    static func resolution(for translation: CGSize) -> ComposerRecordingGestureResolution {
+    static func resolution(for translation: CGSize)
+        -> ComposerRecordingGestureResolution
+    {
         let cancelProgress = max(0, -translation.width) / cancelDistance
         let lockProgress = max(0, -translation.height) / lockDistance
         if cancelProgress >= 1, cancelProgress >= lockProgress {
@@ -1974,7 +2158,10 @@ struct ComposerRecordingGesturePolicy {
 
     static func cancelHintOpacity(for translation: CGSize) -> Double {
         let leftwardDistance = max(CGFloat.zero, -translation.width)
-        let fadeAmount = min(maximumCancelHintFade, leftwardDistance / cancelHintFadeDistance)
+        let fadeAmount = min(
+            maximumCancelHintFade,
+            leftwardDistance / cancelHintFadeDistance
+        )
         return Double(CGFloat(1) - fadeAmount)
     }
 
@@ -2023,7 +2210,9 @@ private struct TelegramRecordButton: View {
                 .fill(.ultraThinMaterial)
                 .overlay {
                     Circle()
-                        .fill(isRecording ? Color.red.opacity(0.13) : Color.clear)
+                        .fill(
+                            isRecording ? Color.red.opacity(0.13) : Color.clear
+                        )
                 }
                 .overlay(
                     Circle()
@@ -2049,7 +2238,8 @@ private struct TelegramRecordButton: View {
         .frame(width: 42, height: 42)
         .scaleEffect(isRecording && !isLocked ? 1.34 : (isPressing ? 1.08 : 1))
         .shadow(
-            color: isRecording ? Color.black.opacity(0.2) : Color.black.opacity(0.075),
+            color: isRecording
+                ? Color.black.opacity(0.2) : Color.black.opacity(0.075),
             radius: 8,
             y: isRecording ? 4 : 2
         )
@@ -2072,10 +2262,15 @@ private struct TelegramRecordButton: View {
         #endif
         .opacity(isEnabled ? 1 : 0.45)
         .allowsHitTesting(isEnabled && !isFinalizing)
-        .animation(.spring(response: 0.24, dampingFraction: 0.78), value: isRecording)
+        .animation(
+            .spring(response: 0.24, dampingFraction: 0.78),
+            value: isRecording
+        )
         .animation(.easeOut(duration: 0.12), value: isPressing)
         .accessibilityLabel(accessibilityLabel)
-        .accessibilityHint("Во время записи проведите влево для отмены или вверх для фиксации")
+        .accessibilityHint(
+            "Во время записи проведите влево для отмены или вверх для фиксации"
+        )
         .onDisappear {
             longPressTask?.cancel()
             longPressTask = nil
@@ -2089,7 +2284,8 @@ private struct TelegramRecordButton: View {
 
     private var accessibilityLabel: String {
         if isLocked { return "Отправить записанное сообщение" }
-        return isRecording ? mode.recordingAccessibilityLabel : mode.idleAccessibilityLabel
+        return isRecording
+            ? mode.recordingAccessibilityLabel : mode.idleAccessibilityLabel
     }
 
     private var recordGesture: some Gesture {
@@ -2170,7 +2366,8 @@ private struct TelegramRecordButton: View {
         longPressTask = Task { @MainActor in
             do {
                 try await Task.sleep(
-                    nanoseconds: ComposerRecordingGesturePolicy.longPressDelayNanoseconds
+                    nanoseconds: ComposerRecordingGesturePolicy
+                        .longPressDelayNanoseconds
                 )
             } catch {
                 return
@@ -2233,19 +2430,30 @@ private struct TelegramRecordButton: View {
                 nil
             }
 
-            override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
-                guard activeTouch == nil, let touch = touches.first else { return }
+            override func touchesBegan(
+                _ touches: Set<UITouch>,
+                with event: UIEvent?
+            ) {
+                guard activeTouch == nil, let touch = touches.first else {
+                    return
+                }
                 activeTouch = touch
                 origin = touch.location(in: window)
                 onBegan?(eventDate(for: touch))
             }
 
-            override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+            override func touchesMoved(
+                _ touches: Set<UITouch>,
+                with event: UIEvent?
+            ) {
                 guard let touch = trackedTouch(in: touches) else { return }
                 onMoved?(translation(for: touch))
             }
 
-            override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+            override func touchesEnded(
+                _ touches: Set<UITouch>,
+                with event: UIEvent?
+            ) {
                 guard let touch = trackedTouch(in: touches) else { return }
                 let translation = translation(for: touch)
                 let date = eventDate(for: touch)
@@ -2253,7 +2461,10 @@ private struct TelegramRecordButton: View {
                 onEnded?(translation, date)
             }
 
-            override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+            override func touchesCancelled(
+                _ touches: Set<UITouch>,
+                with event: UIEvent?
+            ) {
                 guard trackedTouch(in: touches) != nil else { return }
                 activeTouch = nil
                 onCancelled?()
@@ -2328,7 +2539,9 @@ private struct MessageDestructiveAction: Identifiable {
     let messages: [ChatMessage]
 
     var id: String {
-        let messageIDs = messages.map(\.clientID).sorted().joined(separator: "-")
+        let messageIDs = messages.map(\.clientID).sorted().joined(
+            separator: "-"
+        )
         return "\(kind == .localDelete ? "local" : "retract")-\(messageIDs)"
     }
 
@@ -2336,9 +2549,13 @@ private struct MessageDestructiveAction: Identifiable {
         let plural = messages.count > 1
         switch kind {
         case .localDelete:
-            return plural ? "Удалить выбранные сообщения у себя?" : "Удалить сообщение у себя?"
+            return plural
+                ? "Удалить выбранные сообщения у себя?"
+                : "Удалить сообщение у себя?"
         case .retract:
-            return plural ? "Удалить выбранные сообщения у всех?" : "Удалить сообщение у всех?"
+            return plural
+                ? "Удалить выбранные сообщения у всех?"
+                : "Удалить сообщение у всех?"
         }
     }
 
@@ -2383,7 +2600,12 @@ private struct PickedPhoto: Transferable {
         FileRepresentation(contentType: .image) { photo in
             SentTransferredFile(photo.url)
         } importing: { received in
-            PickedPhoto(url: try copyPickedMediaFile(received.file, fallbackExtension: "jpg"))
+            PickedPhoto(
+                url: try copyPickedMediaFile(
+                    received.file,
+                    fallbackExtension: "jpg"
+                )
+            )
         }
     }
 }
@@ -2395,12 +2617,19 @@ private struct PickedVideo: Transferable {
         FileRepresentation(contentType: .movie) { video in
             SentTransferredFile(video.url)
         } importing: { received in
-            PickedVideo(url: try copyPickedMediaFile(received.file, fallbackExtension: "mov"))
+            PickedVideo(
+                url: try copyPickedMediaFile(
+                    received.file,
+                    fallbackExtension: "mov"
+                )
+            )
         }
     }
 }
 
-private func copyPickedMediaFile(_ source: URL, fallbackExtension: String) throws -> URL {
+private func copyPickedMediaFile(_ source: URL, fallbackExtension: String)
+    throws -> URL
+{
     let fileManager = FileManager.default
     let rootDirectory = fileManager.temporaryDirectory
         .appendingPathComponent("LumaPhotoPicker", isDirectory: true)
@@ -2412,7 +2641,9 @@ private func copyPickedMediaFile(_ source: URL, fallbackExtension: String) throw
         withIntermediateDirectories: true
     )
 
-    let values = try? source.resourceValues(forKeys: [.nameKey, .contentTypeKey])
+    let values = try? source.resourceValues(forKeys: [
+        .nameKey, .contentTypeKey,
+    ])
     let fileExtension =
         source.pathExtension.isEmpty
         ? (values?.contentType?.preferredFilenameExtension ?? fallbackExtension)
@@ -2425,7 +2656,9 @@ private func copyPickedMediaFile(_ source: URL, fallbackExtension: String) throw
     }
     let forbidden = CharacterSet(charactersIn: "/\\:")
         .union(.controlCharacters)
-    filename = filename.components(separatedBy: forbidden).joined(separator: "_")
+    filename = filename.components(separatedBy: forbidden).joined(
+        separator: "_"
+    )
     let destination = selectionDirectory.appendingPathComponent(filename)
     let accessed = source.startAccessingSecurityScopedResource()
     defer {
