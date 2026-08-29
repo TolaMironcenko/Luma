@@ -14,6 +14,9 @@
   серверной нормализацией; для PLAIN пароль отправляется как введён.
 - SCRAM доступен в вариантах SHA-512 (предпочтительный, реализация Luma),
   SHA-256 и SHA-1 (Martin); механизм выбирается по рекламе сервера.
+- OMEMO работает в legacy-неймспейсе `eu.siacs.conversations.axolotl` (так
+  умеет закреплённая версия MartinOMEMO); сообщения OMEMO 2
+  (`urn:xmpp:omemo:2`) показываются как нерасшифрованные, а не пустые.
 - Канал шифруется STARTTLS/direct TLS через SecureTransport с уровнем
   `negotiatedSSL` (исключает TLS ниже 1.2) и ALPN «xmpp-client»; на системах
   с поддержкой SecureTransport договаривается TLS 1.3.

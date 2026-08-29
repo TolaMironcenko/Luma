@@ -46,11 +46,14 @@ final class TimelineUITests: XCTestCase {
         let app = launchApp()
         openChat(app)
 
-        // Message 60 can sit partially behind the composer, so drag on a
-        // bubble that is reliably visible and hittable in the bottom area.
-        let target = bubble("uitest-msg-55", in: app)
-        XCTAssertTrue(target.waitForExistence(timeout: 10))
-        XCTAssertTrue(target.isHittable, "The swipe target must be hittable")
+        // The initial scroll position varies slightly between runs, so pick
+        // the first hittable bubble from the bottom area of the timeline.
+        let candidates = [60, 59, 58, 55, 50, 45].map {
+            bubble("uitest-msg-\($0)", in: app)
+        }
+        let target = candidates.first { $0.exists && $0.isHittable }
+        XCTAssertNotNil(target, "At least one swipe target must be hittable")
+        guard let target else { return }
         // A controlled right-to-left drag: the stock swipeLeft() flicks too
         // fast for the gesture's horizontal lock to engage reliably.
         let start = target.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5))

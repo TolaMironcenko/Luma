@@ -394,6 +394,18 @@ grep -q 'connectionStatus == .connected' Sources/Shared/Models/AppModel.swift ||
   echo "Older-history loads must skip silently while disconnected"
   exit 1
 }
+grep -q 'removeSessionWithOwnDeviceOnce' Sources/Shared/XMPP/LumaOMEMOStore.swift || {
+  echo "The self-session purge must be a one-time migration"
+  exit 1
+}
+grep -q 'ensureSelfSession' Sources/Shared/XMPP/XMPPService.swift || {
+  echo "A missing self-session must be rebuilt from the own bundle"
+  exit 1
+}
+grep -q 'urn:xmpp:omemo:2' Sources/Shared/XMPP/XMPPService.swift || {
+  echo "OMEMO 2 payloads must be shown as undecryptable, not empty"
+  exit 1
+}
 grep -q 'onDismissRequest' Sources/Shared/UI/SystemPhotoCameraView.swift || {
   echo "The camera picker must request dismissal before background preparation"
   exit 1

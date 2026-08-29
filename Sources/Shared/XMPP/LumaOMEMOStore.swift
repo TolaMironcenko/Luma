@@ -103,12 +103,15 @@ final class LumaOMEMOStore: SignalStorage {
         sessionAdapter.containsSessionRecord(forAddress: address)
     }
 
-    /// Removes a session record with our own current device. A self-session is
-    /// cryptographically invalid (Signal sessions exist between two distinct
-    /// identities) and makes Martin's `_encode(..., forSelf: true)` encrypt to
-    /// the local device itself, producing messages that later fail with
-    /// "Bad MAC". Such a record can only be created by a bug; deleting it is
-    /// always safe and idempotent.
+    var accountJID: String { repository.accountJID }
+
+    var localRegistrationID: UInt32 { identityAdapter.localRegistrationId() }
+
+    /// Removes a session record with our own current device. A poisoned
+    /// self-session (created by a buggy older build) makes encrypt-to-self
+    /// fail with "Bad MAC". Deleting it is safe, but the session is then
+    /// legitimately rebuilt from our own bundle and must never be purged
+    /// again: archived self-copies depend on its ratchet continuity.
     func removeSessionWithOwnDevice() {
         let registrationID = identityAdapter.localRegistrationId()
         guard registrationID != 0 else { return }
@@ -117,6 +120,16 @@ final class LumaOMEMOStore: SignalStorage {
             deviceId: Int32(bitPattern: registrationID)
         )
         _ = sessionAdapter.deleteSessionRecord(forAddress: address)
+    }
+
+    /// One-time migration purge of the poisoned self-session, keyed per
+    /// account. Running it on every connect destroys the self-session ratchet
+    /// and turns every archived encrypt-to-self copy into "could not decrypt".
+    func removeSessionWithOwnDeviceOnce() {
+        let flagKey = "app.luma.chat.selfSessionPurged." + repository.accountJID
+        guard !UserDefaults.standard.bool(forKey: flagKey) else { return }
+        UserDefaults.standard.set(true, forKey: flagKey)
+        removeSessionWithOwnDevice()
     }
 
     func flushPendingPersistence() {

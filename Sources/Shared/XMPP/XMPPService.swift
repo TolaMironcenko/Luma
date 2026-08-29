@@ -427,9 +427,12 @@ final class XMPPService {
         guard let signalContext = SignalContext(withStorage: omemoStorage) else {
             throw LumaXMPPError.omemoInitializationFailed
         }
-        // Clean up any invalid self-session left behind by a previous buggy
-        // build so it cannot poison encrypt-to-self ("Bad MAC" loops).
-        omemoStorage.removeSessionWithOwnDevice()
+        // Clean up an invalid self-session left behind by a previous buggy
+        // build (one-time migration per account), then make sure a working
+        // self-session exists: encrypt-to-self needs it and deleting it on
+        // every connect made archived self-copies undecryptable.
+        omemoStorage.removeSessionWithOwnDeviceOnce()
+        ensureSelfSession(client: client, omemoStorage: omemoStorage)
 
         configureModules(client: client, signalContext: signalContext, omemoStorage: omemoStorage)
         configureConnection(client: client, account: account, password: password)
@@ -783,6 +786,13 @@ final class XMPPService {
         client.context.writer.write(message, writeCompleted: nil)
         Logger(subsystem: "Luma", category: "call-sync")
             .info("sent call-history id=\(entry.id) peer=\(entry.peerJID) status=\(entry.outcome.rawValue)")
+    }
+
+    /// Detects OMEMO 2 (`urn:xmpp:omemo:2`) payloads, which the pinned
+    /// MartinOMEMO version cannot decrypt (it only speaks the legacy
+    /// `eu.siacs.conversations.axolotl` namespace).
+    private static func isOMEMO2Payload(_ message: Message) -> Bool {
+        message.element.findChild(name: "encrypted", xmlns: "urn:xmpp:omemo:2") != nil
     }
 
     private static func callHistoryBody(_ entry: CallHistoryEntry) -> String {
@@ -1582,6 +1592,22 @@ final class XMPPService {
         }
     }
 
+    /// Rebuilds the self-session from our own published bundle when it is
+    /// missing, so encrypt-to-self keeps working after the migration purge.
+    private func ensureSelfSession(
+        client: XMPPClient,
+        omemoStorage: LumaOMEMOStore
+    ) {
+        let registrationID = omemoStorage.localRegistrationID
+        guard registrationID != 0 else { return }
+        let address = SignalAddress(
+            name: omemoStorage.accountJID,
+            deviceId: Int32(bitPattern: registrationID)
+        )
+        guard !omemoStorage.hasSession(for: address) else { return }
+        client.module(.omemo).buildSession(forAddress: address)
+    }
+
     private func configureModules(
         client: XMPPClient,
         signalContext: SignalContext,
@@ -1975,9 +2001,18 @@ final class XMPPService {
         case .failure(let error):
             switch error {
             case .notEncrypted:
-                security = .plaintext
-                fingerprint = nil
-                contentMessage = message
+                if Self.isOMEMO2Payload(message), message.body?.isEmpty != false {
+                    // OMEMO 2 (urn:xmpp:omemo:2) is not implemented by the
+                    // pinned MartinOMEMO library; show the honest
+                    // undecryptable state instead of an empty bubble.
+                    security = .decryptionFailed
+                    fingerprint = nil
+                    contentMessage = nil
+                } else {
+                    security = .plaintext
+                    fingerprint = nil
+                    contentMessage = message
+                }
             default:
                 // Some clients include a plaintext <body> fallback alongside the
                 // OMEMO <encrypted> payload. When decryption fails, prefer that
@@ -2230,9 +2265,15 @@ final class XMPPService {
             case .failure(let error):
                 switch error {
                 case .notEncrypted:
-                    security = .plaintext
-                    fingerprint = nil
-                    contentMessage = message
+                    if Self.isOMEMO2Payload(message), message.body?.isEmpty != false {
+                        security = .decryptionFailed
+                        fingerprint = nil
+                        contentMessage = nil
+                    } else {
+                        security = .plaintext
+                        fingerprint = nil
+                        contentMessage = message
+                    }
                 case .duplicateMessage:
                     emitGroupEchoIfPossible(
                         roomJID: roomJID,
