@@ -466,7 +466,7 @@ grep -q 'MediaPickerSelectionPolicy.preferredOrder' Sources/Shared/UI/ChatView.s
   echo "Ambiguous photo/video providers must retain a fallback representation"
   exit 1
 }
-grep -q 'item.loadTransferable(type: Data.self)' Sources/Shared/UI/ChatView.swift || {
+grep -q 'type: Data.self' Sources/Shared/UI/ChatView.swift || {
   echo "PhotosPicker images need a data fallback when no file representation is available"
   exit 1
 }

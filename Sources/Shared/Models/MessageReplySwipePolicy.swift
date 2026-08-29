@@ -14,8 +14,11 @@ struct MessageReplySwipePolicy {
     static let followDominance: CGFloat = 1.05
 
     /// Whether this translation can lock the gesture as a horizontal swipe.
+    /// Only right-to-left (swipe left, negative width) is accepted; the
+    /// opposite direction is deliberately left to the scroll view.
     static func canLock(_ translation: CGSize) -> Bool {
-        isHorizontal(translation, dominance: lockDominance)
+        translation.width < 0
+            && isHorizontal(translation, dominance: lockDominance)
             && abs(translation.width) >= activationDistance * 0.5
     }
 
@@ -24,12 +27,13 @@ struct MessageReplySwipePolicy {
     }
 
     static func offset(locked: Bool, translation: CGSize) -> CGFloat {
+        guard translation.width < 0 else { return 0 }
         let dominance = locked ? followDominance : lockDominance
         guard isHorizontal(translation, dominance: dominance) else { return 0 }
         let width = abs(translation.width)
         guard width >= activationDistance else { return 0 }
         let distance = min((width - activationDistance) * 0.72 + 12, maximumOffset)
-        return translation.width < 0 ? -distance : distance
+        return -distance
     }
 
     static func shouldReply(
@@ -40,6 +44,7 @@ struct MessageReplySwipePolicy {
         let candidate = abs(predictedEndTranslation.width) > abs(translation.width)
             ? predictedEndTranslation
             : translation
+        guard candidate.width < 0 else { return false }
         let dominance = locked ? followDominance : lockDominance
         return isHorizontal(candidate, dominance: dominance)
             && abs(candidate.width) >= triggerDistance

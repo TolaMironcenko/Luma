@@ -3,35 +3,51 @@ import XCTest
 @testable import Luma
 
 final class MessageReplySwipeTests: XCTestCase {
-    func testHorizontalSwipeInEitherDirectionReplies() {
-        XCTAssertTrue(MessageReplySwipePolicy.shouldReply(
-            locked: false,
-            translation: CGSize(width: 70, height: 8),
-            predictedEndTranslation: CGSize(width: 72, height: 9)
-        ))
+    func testRightToLeftSwipeReplies() {
         XCTAssertTrue(MessageReplySwipePolicy.shouldReply(
             locked: false,
             translation: CGSize(width: -70, height: 8),
             predictedEndTranslation: CGSize(width: -72, height: 9)
+        ))
+        XCTAssertLessThan(
+            MessageReplySwipePolicy.offset(locked: false, translation: CGSize(width: -70, height: 8)),
+            0
+        )
+    }
+
+    func testLeftToRightSwipeNeverReplies() {
+        XCTAssertFalse(MessageReplySwipePolicy.canLock(CGSize(width: 24, height: 10)))
+        XCTAssertEqual(
+            MessageReplySwipePolicy.offset(locked: false, translation: CGSize(width: 70, height: 8)),
+            0
+        )
+        XCTAssertEqual(
+            MessageReplySwipePolicy.offset(locked: true, translation: CGSize(width: 70, height: 8)),
+            0
+        )
+        XCTAssertFalse(MessageReplySwipePolicy.shouldReply(
+            locked: false,
+            translation: CGSize(width: 70, height: 8),
+            predictedEndTranslation: CGSize(width: 72, height: 9)
         ))
     }
 
     func testVerticalTimelineScrollDoesNotReply() {
         XCTAssertFalse(MessageReplySwipePolicy.shouldReply(
             locked: false,
-            translation: CGSize(width: 42, height: 80),
-            predictedEndTranslation: CGSize(width: 50, height: 105)
+            translation: CGSize(width: -42, height: 80),
+            predictedEndTranslation: CGSize(width: -50, height: 105)
         ))
     }
 
     func testDiagonalTimelineScrollDoesNotReply() {
         XCTAssertFalse(MessageReplySwipePolicy.shouldReply(
             locked: false,
-            translation: CGSize(width: 54, height: 44),
-            predictedEndTranslation: CGSize(width: 76, height: 58)
+            translation: CGSize(width: -54, height: 44),
+            predictedEndTranslation: CGSize(width: -76, height: 58)
         ))
         XCTAssertEqual(
-            MessageReplySwipePolicy.offset(locked: false, translation: CGSize(width: 54, height: 44)),
+            MessageReplySwipePolicy.offset(locked: false, translation: CGSize(width: -54, height: 44)),
             0
         )
     }
@@ -41,11 +57,11 @@ final class MessageReplySwipeTests: XCTestCase {
         // during scrolling; the stricter policy must stay silent.
         XCTAssertFalse(MessageReplySwipePolicy.shouldReply(
             locked: false,
-            translation: CGSize(width: 60, height: 40),
-            predictedEndTranslation: CGSize(width: 60, height: 40)
+            translation: CGSize(width: -60, height: 40),
+            predictedEndTranslation: CGSize(width: -60, height: 40)
         ))
         XCTAssertEqual(
-            MessageReplySwipePolicy.offset(locked: false, translation: CGSize(width: 60, height: 40)),
+            MessageReplySwipePolicy.offset(locked: false, translation: CGSize(width: -60, height: 40)),
             0
         )
     }
@@ -53,8 +69,8 @@ final class MessageReplySwipeTests: XCTestCase {
     func testShortSwipeDoesNotReply() {
         XCTAssertFalse(MessageReplySwipePolicy.shouldReply(
             locked: false,
-            translation: CGSize(width: 36, height: 4),
-            predictedEndTranslation: CGSize(width: 48, height: 5)
+            translation: CGSize(width: -36, height: 4),
+            predictedEndTranslation: CGSize(width: -48, height: 5)
         ))
     }
 
@@ -68,26 +84,27 @@ final class MessageReplySwipeTests: XCTestCase {
 
     func testIndicatorStaysHiddenUntilActivationDistance() {
         XCTAssertEqual(
-            MessageReplySwipePolicy.offset(locked: false, translation: CGSize(width: 20, height: 0)),
+            MessageReplySwipePolicy.offset(locked: false, translation: CGSize(width: -20, height: 0)),
             0
         )
-        XCTAssertGreaterThan(
-            MessageReplySwipePolicy.offset(locked: false, translation: CGSize(width: 24, height: 0)),
+        XCTAssertLessThan(
+            MessageReplySwipePolicy.offset(locked: false, translation: CGSize(width: -24, height: 0)),
             0
         )
     }
 
     func testVisualOffsetIsCapped() {
         XCTAssertEqual(
-            MessageReplySwipePolicy.offset(locked: true, translation: CGSize(width: 500, height: 0)),
-            MessageReplySwipePolicy.maximumOffset
+            MessageReplySwipePolicy.offset(locked: true, translation: CGSize(width: -500, height: 0)),
+            -MessageReplySwipePolicy.maximumOffset
         )
     }
 
     func testCanLockRequiresClearHorizontalStart() {
-        XCTAssertTrue(MessageReplySwipePolicy.canLock(CGSize(width: 24, height: 10)))
-        XCTAssertFalse(MessageReplySwipePolicy.canLock(CGSize(width: 30, height: 20)))
-        XCTAssertFalse(MessageReplySwipePolicy.canLock(CGSize(width: 8, height: 5)))
+        XCTAssertTrue(MessageReplySwipePolicy.canLock(CGSize(width: -24, height: 10)))
+        XCTAssertFalse(MessageReplySwipePolicy.canLock(CGSize(width: -30, height: 20)))
+        XCTAssertFalse(MessageReplySwipePolicy.canLock(CGSize(width: -8, height: 5)))
+        XCTAssertFalse(MessageReplySwipePolicy.canLock(CGSize(width: 40, height: 4)))
     }
 
     func testLockedSwipeToleratesVerticalDrift() {
@@ -95,11 +112,11 @@ final class MessageReplySwipeTests: XCTestCase {
         // by the 1.6 lock dominance but must still count as a reply swipe.
         XCTAssertTrue(MessageReplySwipePolicy.shouldReply(
             locked: true,
-            translation: CGSize(width: 70, height: 60),
-            predictedEndTranslation: CGSize(width: 70, height: 60)
+            translation: CGSize(width: -70, height: 60),
+            predictedEndTranslation: CGSize(width: -70, height: 60)
         ))
-        XCTAssertGreaterThan(
-            MessageReplySwipePolicy.offset(locked: true, translation: CGSize(width: 70, height: 60)),
+        XCTAssertLessThan(
+            MessageReplySwipePolicy.offset(locked: true, translation: CGSize(width: -70, height: 60)),
             0
         )
     }
