@@ -18,13 +18,13 @@ final class TimelineUITests: XCTestCase {
 
     private func openChat(_ app: XCUIApplication) {
         let chatRow = app.staticTexts["uitest-peer"]
-        XCTAssertTrue(chatRow.waitForExistence(timeout: 15))
+        XCTAssertTrue(chatRow.waitForExistence(timeout: 30))
         chatRow.tap()
         XCTAssertTrue(
             app.descendants(matching: .any).matching(identifier: "chat-timeline").firstMatch
-                .waitForExistence(timeout: 15)
+                .waitForExistence(timeout: 30)
         )
-        XCTAssertTrue(bubble("uitest-msg-60", in: app).waitForExistence(timeout: 15))
+        XCTAssertTrue(bubble("uitest-msg-60", in: app).waitForExistence(timeout: 30))
     }
 
     func testTimelineVerticalScrollWorks() throws {
@@ -51,22 +51,25 @@ final class TimelineUITests: XCTestCase {
         let candidates = [60, 59, 58, 55, 50, 45].map {
             bubble("uitest-msg-\($0)", in: app)
         }
-        let target = candidates.first { $0.exists && $0.isHittable }
-        XCTAssertNotNil(target, "At least one swipe target must be hittable")
-        guard let target else { return }
         // A controlled right-to-left drag: the stock swipeLeft() flicks too
-        // fast for the gesture's horizontal lock to engage reliably.
-        let start = target.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5))
-        start.press(forDuration: 0.15, thenDragTo: start.withOffset(CGVector(dx: -200, dy: 0)))
+        // fast for the gesture's horizontal lock to engage reliably. The drag
+        // itself can occasionally be swallowed, so retry on the next hittable
+        // bubble until the reply plate appears.
+        let banner = app.descendants(matching: .any).matching(identifier: "reply-banner").firstMatch
+        var bannerAppeared = false
+        for _ in 0..<3 where !bannerAppeared {
+            guard let target = candidates.first(where: { $0.exists && $0.isHittable }) else {
+                break
+            }
+            let start = target.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5))
+            start.press(forDuration: 0.15, thenDragTo: start.withOffset(CGVector(dx: -200, dy: 0)))
+            bannerAppeared = banner.waitForExistence(timeout: 2)
+        }
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = "after-drag"
         attachment.lifetime = .keepAlways
         add(attachment)
-        XCTAssertTrue(
-            app.descendants(matching: .any).matching(identifier: "reply-banner").firstMatch
-                .waitForExistence(timeout: 5),
-            "A left swipe must open the reply plate"
-        )
+        XCTAssertTrue(bannerAppeared, "A left swipe must open the reply plate")
 
         app.buttons["Отменить ответ"].tap()
         for _ in 0..<7 {

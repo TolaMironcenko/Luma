@@ -60,6 +60,11 @@ final class AppModel: ObservableObject {
     @Published private(set) var isAppLocked = false
     @Published private(set) var appLockIsEnabled = false
     @Published private(set) var appLockBiometricIsEnabled = false
+    /// Cached once per session: LAContext.canEvaluatePolicy performs IPC with
+    /// the security daemon and must never run in a view body (it froze the
+    /// macOS lock screen).
+    @Published private(set) var biometricUnlockAvailable = false
+    @Published private(set) var biometricUnlockName = ""
     @Published private(set) var mediaViewerItem: MediaViewerItem?
     @Published private(set) var mediaPreviewURLs: [String: URL] = [:]
     @Published private(set) var mediaThumbnailData: [String: Data] = [:]
@@ -140,6 +145,7 @@ final class AppModel: ObservableObject {
         appLockIsEnabled = appLock.isEnabled
         appLockBiometricIsEnabled = appLock.biometricUnlockEnabled
         isAppLocked = appLock.isEnabled && !RuntimeEnvironment.isRunningTests
+        refreshBiometricAvailability()
 
         xmpp.eventHandler = { [weak self] event in
             self?.consume(event)
@@ -533,6 +539,23 @@ final class AppModel: ObservableObject {
         guard appLock.verify(passcode: passcode) else { return false }
         isAppLocked = false
         return true
+    }
+
+    func refreshBiometricAvailability() {
+        guard !RuntimeEnvironment.isRunningTests else { return }
+        Task.detached(priority: .utility) {
+            let context = LAContext()
+            var error: NSError?
+            let available = context.canEvaluatePolicy(
+                .deviceOwnerAuthenticationWithBiometrics,
+                error: &error
+            )
+            let name = context.biometryType == .faceID ? "Face ID" : "Touch ID"
+            await MainActor.run { [weak self] in
+                self?.biometricUnlockAvailable = available
+                self?.biometricUnlockName = name
+            }
+        }
     }
 
     func unlockWithBiometrics() async -> Bool {

@@ -57,12 +57,15 @@ struct AppLockView: View {
                 .buttonStyle(.borderedProminent)
                 .disabled(passcode.isEmpty)
 
-                if biometricAvailable, model.appLockBiometricIsEnabled {
+                if model.biometricUnlockAvailable, model.appLockBiometricIsEnabled {
                     Button {
                         Task { await biometricUnlock() }
                     } label: {
-                        Label("Войти по \(biometricName)", systemImage: biometricIcon)
-                            .foregroundStyle(.white)
+                        Label(
+                            "Войти по \(model.biometricUnlockName)",
+                            systemImage: model.biometricUnlockName == "Face ID" ? "faceid" : "touchid"
+                        )
+                        .foregroundStyle(.white)
                     }
                 }
             }
@@ -73,35 +76,17 @@ struct AppLockView: View {
         .onAppear {
             isFocused = true
         }
+#if os(iOS)
         .task {
-            // Auto-prompt biometrics once when the lock screen appears.
-            guard biometricAvailable, model.appLockBiometricIsEnabled else { return }
+            // Auto-prompt biometrics once when the lock screen appears. iOS
+            // only: on macOS the system Touch ID dialog blocks the window
+            // and freezes the lock screen.
+            guard model.biometricUnlockAvailable, model.appLockBiometricIsEnabled else {
+                return
+            }
             await biometricUnlock()
         }
-    }
-
-    private var biometricContext: LAContext {
-        LAContext()
-    }
-
-    private var biometricAvailable: Bool {
-        var error: NSError?
-        return biometricContext.canEvaluatePolicy(
-            .deviceOwnerAuthenticationWithBiometrics,
-            error: &error
-        )
-    }
-
-    private var biometryType: LABiometryType {
-        biometricContext.biometryType
-    }
-
-    private var biometricIcon: String {
-        biometryType == .faceID ? "faceid" : "touchid"
-    }
-
-    private var biometricName: String {
-        biometryType == .faceID ? "Face ID" : "Touch ID"
+#endif
     }
 
     private func submit() {

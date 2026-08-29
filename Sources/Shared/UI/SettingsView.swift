@@ -112,7 +112,7 @@ struct SettingsView: View {
                         }
                     ))
                     if model.appLockIsEnabled {
-                        Toggle("Вход по \(biometricName)", isOn: Binding(
+                        Toggle("Вход по \(model.biometricUnlockName)", isOn: Binding(
                             get: { model.appLockBiometricIsEnabled },
                             set: { enabled in
                                 passcodeSheetMode = .verify(
@@ -120,7 +120,7 @@ struct SettingsView: View {
                                 )
                             }
                         ))
-                        .disabled(!biometricAvailable)
+                        .disabled(!model.biometricUnlockAvailable)
                         Button("Сменить пароль") {
                             passcodeSheetMode = .change
                         }
@@ -192,22 +192,6 @@ struct SettingsView: View {
 #if os(macOS)
         .frame(minWidth: 500, minHeight: 560)
 #endif
-    }
-
-    private var biometricContext: LAContext {
-        LAContext()
-    }
-
-    private var biometricAvailable: Bool {
-        var error: NSError?
-        return biometricContext.canEvaluatePolicy(
-            .deviceOwnerAuthenticationWithBiometrics,
-            error: &error
-        )
-    }
-
-    private var biometricName: String {
-        biometricContext.biometryType == .faceID ? "Face ID" : "Touch ID"
     }
 
     private var connectionTitle: String {

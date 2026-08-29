@@ -428,16 +428,18 @@ final class XMPPService {
             throw LumaXMPPError.omemoInitializationFailed
         }
         // Clean up an invalid self-session left behind by a previous buggy
-        // build (one-time migration per account), then make sure a working
-        // self-session exists: encrypt-to-self needs it and deleting it on
-        // every connect made archived self-copies undecryptable.
+        // build (one-time migration per account).
         omemoStorage.removeSessionWithOwnDeviceOnce()
-        ensureSelfSession(client: client, omemoStorage: omemoStorage)
 
         configureModules(client: client, signalContext: signalContext, omemoStorage: omemoStorage)
         configureConnection(client: client, account: account, password: password)
         activePassword = password
         subscribe(to: client, omemoStorage: omemoStorage)
+
+        // The self-session must be rebuilt after the modules exist: the
+        // ensureSelfSession lookup goes through the modules manager and
+        // crashes on a not-yet-registered OMEMO module.
+        ensureSelfSession(client: client, omemoStorage: omemoStorage)
 
         self.client = client
         self.omemoStorage = omemoStorage

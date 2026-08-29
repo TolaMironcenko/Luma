@@ -406,6 +406,14 @@ grep -q 'urn:xmpp:omemo:2' Sources/Shared/XMPP/XMPPService.swift || {
   echo "OMEMO 2 payloads must be shown as undecryptable, not empty"
   exit 1
 }
+grep -q 'biometricUnlockAvailable' Sources/Shared/Models/AppModel.swift || {
+  echo "Biometric availability must be cached off the view body"
+  exit 1
+}
+grep -q 'case .background:' Sources/App/LumaApp.swift || {
+  echo "The app lock must trigger on background only, not on inactive"
+  exit 1
+}
 grep -q 'onDismissRequest' Sources/Shared/UI/SystemPhotoCameraView.swift || {
   echo "The camera picker must request dismissal before background preparation"
   exit 1
