@@ -36,6 +36,7 @@
 		1B20F2D3E4F18E6094B103BF /* LumaOMEMOStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24A68154C2D2B3E9AB0C145F /* LumaOMEMOStore.swift */; };
 		1B7C9F60AA7BFF6A2C0FE45D /* SASLprepTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13EFA01112297641B9B0EBC5 /* SASLprepTests.swift */; };
 		1BD84AA796838F48F847D192 /* AudioMessageRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BD0A69BACDF8F0C43218AEB /* AudioMessageRecorder.swift */; };
+		1C78234B3FA4E528C7F701B7 /* LumaOMEMO2Module.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C8698ED5D720AC876F51EE3 /* LumaOMEMO2Module.swift */; };
 		1CB1DAF27B8632B2E071338E /* VideoNoteRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BB168F9AD341C35EADACF10 /* VideoNoteRecorder.swift */; };
 		1D5B3487BDC63B051A33D874 /* VideoNoteRecordingLifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96829BDC257FD8D61083DA4D /* VideoNoteRecordingLifecycle.swift */; };
 		1E239B9338CEEA7EA704626C /* ChatTimelineEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13E35F7F0CB0243311FCDD61 /* ChatTimelineEntry.swift */; };
@@ -170,6 +171,7 @@
 		A2AF2B19A1E9D9B8D6E1CD63 /* AvatarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6EA8DF39BD360C0F8BA5F62F /* AvatarView.swift */; };
 		A4A742F3BBEFCAFD29975968 /* SaslFailureMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69F4FFBFD65C218FF6505844 /* SaslFailureMessage.swift */; };
 		A69C1CD6CC1FF13631044BA3 /* GeoLocationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37C24C432306C3FDF7F7DB7D /* GeoLocationTests.swift */; };
+		A87AB7D40BD589F5EBCCBD6F /* LumaOMEMO2Tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4170740AD7BA5D0EC8C870F0 /* LumaOMEMO2Tests.swift */; };
 		A90142509385DE6E83818953 /* MessageBubble.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03AC6BC7FC7CFFD69A20DA17 /* MessageBubble.swift */; };
 		ABAFC50EF551861779FFD9A1 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 515DD6F1F80A848C39EBAE84 /* RootView.swift */; };
 		AC242F69C28F69A001D6559D /* MediaViewerDismissGestureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DCB924748780145A707D890 /* MediaViewerDismissGestureTests.swift */; };
@@ -222,6 +224,7 @@
 		E2245416CB055ECEF0C5F81D /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A338A8EB30206647BDD922F /* SettingsView.swift */; };
 		E42A674072CE5D3AF1F5848D /* Conversation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7846C2EEE2551C6690A4FDC6 /* Conversation.swift */; };
 		E449F2B17E6D5053EBA7F6A8 /* Shared.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 7C9866558B72CB1909A01EEC /* Shared.xcassets */; };
+		E4B1FDFFD3BFFC47B5F154DE /* LumaOMEMO2Module.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C8698ED5D720AC876F51EE3 /* LumaOMEMO2Module.swift */; };
 		E582A0424A63CA16DDA4E984 /* CryptoKitAESGCMEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A017D8B164B1107299F6781 /* CryptoKitAESGCMEngine.swift */; };
 		E65D356ABC5320BBFB3E2F6E /* VideoNoteRecordingLifecycleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9FCE089ABBF05EF9F55D451 /* VideoNoteRecordingLifecycleTests.swift */; };
 		E67E0D2C3FBA2C3739B692E0 /* VideoAttachmentPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = A88E48AAC10463764CAD9835 /* VideoAttachmentPreview.swift */; };
@@ -340,6 +343,7 @@
 		3BA0E25A2B52BDED1C8B3B1B /* ArchiveStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveStore.swift; sourceTree = "<group>"; };
 		3C0E3C6F60C3D4D6C565CA0A /* MediaPreviewProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaPreviewProcessor.swift; sourceTree = "<group>"; };
 		3CDA85EA65BC449733C67084 /* ArchiveMessageBatchPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveMessageBatchPolicy.swift; sourceTree = "<group>"; };
+		4170740AD7BA5D0EC8C870F0 /* LumaOMEMO2Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LumaOMEMO2Tests.swift; sourceTree = "<group>"; };
 		4380219D3AF1D75EDF4D3167 /* MediaViewer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaViewer.swift; sourceTree = "<group>"; };
 		43A4CE3E678096BA76F2988C /* NewChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewChatView.swift; sourceTree = "<group>"; };
 		47680B7C615374A8C245818F /* AppLockPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLockPolicy.swift; sourceTree = "<group>"; };
@@ -359,6 +363,7 @@
 		6597326A509F73A2993A6B80 /* LayoutCheckUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayoutCheckUITests.swift; sourceTree = "<group>"; };
 		6773F87EE60F91BBDCA4B1F5 /* GroupConversationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupConversationTests.swift; sourceTree = "<group>"; };
 		69F4FFBFD65C218FF6505844 /* SaslFailureMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaslFailureMessage.swift; sourceTree = "<group>"; };
+		6C8698ED5D720AC876F51EE3 /* LumaOMEMO2Module.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LumaOMEMO2Module.swift; sourceTree = "<group>"; };
 		6DCB924748780145A707D890 /* MediaViewerDismissGestureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaViewerDismissGestureTests.swift; sourceTree = "<group>"; };
 		6DDD7A997EF0AF7DA9C3478B /* MessageReplyFallback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageReplyFallback.swift; sourceTree = "<group>"; };
 		6E25F876C75CC5FCDDCB5906 /* NotificationPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationPolicy.swift; sourceTree = "<group>"; };
@@ -401,6 +406,7 @@
 		ABB0729C69630AE38C2D7BBF /* ArchiveStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveStoreTests.swift; sourceTree = "<group>"; };
 		B1E6875B522254FFB5FA880E /* MediaPickerSelectionPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaPickerSelectionPolicy.swift; sourceTree = "<group>"; };
 		B2446F6A1D00ADAD261D4CCD /* SASLprep.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SASLprep.swift; sourceTree = "<group>"; };
+		B2DC8B629E8D4F078B192FAB /* MartinOMEMO */ = {isa = PBXFileReference; lastKnownFileType = folder; name = MartinOMEMO; path = ThirdParty/MartinOMEMO; sourceTree = SOURCE_ROOT; };
 		B38702A403DA3E943525FB62 /* MediaPickerSelectionPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaPickerSelectionPolicyTests.swift; sourceTree = "<group>"; };
 		B8F7B01C59E9667ADAFABBAC /* MediaViewerItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaViewerItem.swift; sourceTree = "<group>"; };
 		B96E7970930AB7F09CB5DA9C /* LocationMessagePreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationMessagePreview.swift; sourceTree = "<group>"; };
@@ -476,6 +482,7 @@
 				1A017D8B164B1107299F6781 /* CryptoKitAESGCMEngine.swift */,
 				72EC7DC2FE873C0BA4321496 /* LumaCallEngine.swift */,
 				8F8DE3CE0E26DEA21A27CF67 /* LumaConnectionStatsModule.swift */,
+				6C8698ED5D720AC876F51EE3 /* LumaOMEMO2Module.swift */,
 				24A68154C2D2B3E9AB0C145F /* LumaOMEMOStore.swift */,
 				E9F226A1F8D82B39630F9CEB /* LumaRoomStore.swift */,
 				F92830FB64B5BD0A06BC828D /* LumaRosterStore.swift */,
@@ -604,6 +611,7 @@
 				CD286F7AF06DFC5488FF0CEA /* EncryptionPreferenceTests.swift */,
 				37C24C432306C3FDF7F7DB7D /* GeoLocationTests.swift */,
 				6773F87EE60F91BBDCA4B1F5 /* GroupConversationTests.swift */,
+				4170740AD7BA5D0EC8C870F0 /* LumaOMEMO2Tests.swift */,
 				772A4F24CAF527E328657749 /* MediaFileIOTests.swift */,
 				A127BF01F5C488CD3E053379 /* MediaMetadataTests.swift */,
 				B38702A403DA3E943525FB62 /* MediaPickerSelectionPolicyTests.swift */,
@@ -666,6 +674,7 @@
 		751CBF99010567D043B5DA42 = {
 			isa = PBXGroup;
 			children = (
+				FFFA7B7564720060678770FC /* Packages */,
 				D1D74E43299CD30D89B80F74 /* Resources */,
 				2A98AB59ED6FB8802C301CF4 /* Sources */,
 				4D0D58FD94D94B4D409033AF /* Tests */,
@@ -742,6 +751,14 @@
 				D1407657E9EBF5EC3FC1D327 /* VideoNotePreview.swift */,
 			);
 			path = Components;
+			sourceTree = "<group>";
+		};
+		FFFA7B7564720060678770FC /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				B2DC8B629E8D4F078B192FAB /* MartinOMEMO */,
+			);
+			name = Packages;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -881,8 +898,8 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				277642F04D20E1E2B6BE565F /* XCRemoteSwiftPackageReference "Martin" */,
-				43A0FD3A38EEEB7A14708794 /* XCRemoteSwiftPackageReference "MartinOMEMO" */,
 				251B06A6CDEEC0297E9E6836 /* XCRemoteSwiftPackageReference "WebRTC" */,
+				3B2A3CB97916A28030D0A4E0 /* XCLocalSwiftPackageReference "ThirdParty/MartinOMEMO" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 90CFB4B53B5F9EF91D718FC2 /* Products */;
@@ -986,6 +1003,7 @@
 				2D83457A8857592E23289EF7 /* LumaApp.swift in Sources */,
 				5415AF453AB8FCDA55FB59AD /* LumaCallEngine.swift in Sources */,
 				5459CF1808474747AF46A366 /* LumaConnectionStatsModule.swift in Sources */,
+				1C78234B3FA4E528C7F701B7 /* LumaOMEMO2Module.swift in Sources */,
 				FB1052104B90994CF03FE6A2 /* LumaOMEMOStore.swift in Sources */,
 				CBED8565C1313DC03D21A105 /* LumaRoomStore.swift in Sources */,
 				F1713D1CD4E019540BFA78FE /* LumaRosterStore.swift in Sources */,
@@ -1099,6 +1117,7 @@
 				7F012252FA73A8282B92323C /* LumaApp.swift in Sources */,
 				7F211C3BBA81E5D43D3A88AE /* LumaCallEngine.swift in Sources */,
 				B13513FE5DAD462086B8B0B0 /* LumaConnectionStatsModule.swift in Sources */,
+				E4B1FDFFD3BFFC47B5F154DE /* LumaOMEMO2Module.swift in Sources */,
 				1B20F2D3E4F18E6094B103BF /* LumaOMEMOStore.swift in Sources */,
 				03C65C3DAA1D8776AF496EFA /* LumaRoomStore.swift in Sources */,
 				7F4C00E98574C8E5193F442E /* LumaRosterStore.swift in Sources */,
@@ -1167,6 +1186,7 @@
 				03F2CD213153D0EF5CBC8021 /* EncryptionPreferenceTests.swift in Sources */,
 				A69C1CD6CC1FF13631044BA3 /* GeoLocationTests.swift in Sources */,
 				60CE79BB4D0FB53E126354AA /* GroupConversationTests.swift in Sources */,
+				A87AB7D40BD589F5EBCCBD6F /* LumaOMEMO2Tests.swift in Sources */,
 				DC4FAE63AB8AF89C30512763 /* MediaFileIOTests.swift in Sources */,
 				10C5382981A87A2963DD397C /* MediaMetadataTests.swift in Sources */,
 				958FD3CBEC600651E1171B55 /* MediaPickerSelectionPolicyTests.swift in Sources */,
@@ -1606,6 +1626,13 @@
 		};
 /* End XCConfigurationList section */
 
+/* Begin XCLocalSwiftPackageReference section */
+		3B2A3CB97916A28030D0A4E0 /* XCLocalSwiftPackageReference "ThirdParty/MartinOMEMO" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ThirdParty/MartinOMEMO;
+		};
+/* End XCLocalSwiftPackageReference section */
+
 /* Begin XCRemoteSwiftPackageReference section */
 		251B06A6CDEEC0297E9E6836 /* XCRemoteSwiftPackageReference "WebRTC" */ = {
 			isa = XCRemoteSwiftPackageReference;
@@ -1623,14 +1650,6 @@
 				version = 3.2.4;
 			};
 		};
-		43A0FD3A38EEEB7A14708794 /* XCRemoteSwiftPackageReference "MartinOMEMO" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/tigase/MartinOMEMO.git";
-			requirement = {
-				kind = exactVersion;
-				version = 2.2.3;
-			};
-		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -1641,7 +1660,6 @@
 		};
 		371134B6F3E284082E28FE08 /* MartinOMEMO */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 43A0FD3A38EEEB7A14708794 /* XCRemoteSwiftPackageReference "MartinOMEMO" */;
 			productName = MartinOMEMO;
 		};
 		4BD4324EE01A6DD46EBE7FDA /* Martin */ = {
@@ -1656,7 +1674,6 @@
 		};
 		7A670E49149C9C7E13F0A6A2 /* MartinOMEMO */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 43A0FD3A38EEEB7A14708794 /* XCRemoteSwiftPackageReference "MartinOMEMO" */;
 			productName = MartinOMEMO;
 		};
 		EFCAF9B0DE67466AF22E76C3 /* WebRTC */ = {

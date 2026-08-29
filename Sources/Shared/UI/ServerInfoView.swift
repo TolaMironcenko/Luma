@@ -8,13 +8,13 @@ struct ServerInfoView: View {
     @State private var isLoading = false
 
     var body: some View {
-        List {
+        Form {
             if let info = model.serverInformation {
-                Section {
+                Section("Это статистика вашего соединения.") {
                     statisticsEntries(info)
-                } header: {
-                    Text("Это статистика вашего соединения.")
-                }
+                } //header: {
+//                    Text("Это статистика вашего соединения.")
+//                }
 
                 Section {
                     softwareEntry(info)
@@ -255,7 +255,7 @@ struct ServerInfoView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+//        .frame(maxWidth: .infinity, alignment: .leading)
         .listRowBackground(status.color)
     }
 

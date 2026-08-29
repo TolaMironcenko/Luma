@@ -854,14 +854,28 @@ final class XMPPService {
             addReply(replyTo, fallback: replyFallback, to: message)
             if !encrypted, let outOfBandURL { message.oob = outOfBandURL }
             if encrypted {
-                guard let omemo = client.moduleOrNil(.omemo), omemo.isReady else {
-                    throw LumaXMPPError.omemoNotReady
-                }
                 let recipients = try await groupOMEMORecipients(
                     in: room,
                     using: muc,
                     client: client
                 )
+                // OMEMO 2 only when every member publishes OMEMO 2 devices;
+                // otherwise the legacy protocol keeps legacy members readable.
+                if let omemo2 = client.moduleOrNil(.omemo2),
+                    omemo2.isReady,
+                    recipients.allSatisfy({ omemo2.devices(for: $0)?.isEmpty == false }) {
+                    let encryptedMessage = try await encrypt(
+                        message,
+                        forGroupRecipients: recipients,
+                        using: omemo2,
+                        roomJID: roomJID
+                    )
+                    try await room.send(message: encryptedMessage.message)
+                    return encryptedMessage.fingerprint
+                }
+                guard let omemo = client.moduleOrNil(.omemo), omemo.isReady else {
+                    throw LumaXMPPError.omemoNotReady
+                }
                 let encryptedMessage = try await encrypt(
                     message,
                     forGroupRecipients: recipients,
@@ -893,6 +907,15 @@ final class XMPPService {
             message.oob = outOfBandURL
         }
         if encrypted {
+            // Prefer OMEMO 2 when the peer publishes OMEMO 2 devices; legacy
+            // OMEMO stays as the fallback for legacy-only contacts.
+            if let omemo2 = client.moduleOrNil(.omemo2),
+                omemo2.isReady,
+                omemo2.devices(for: peer)?.isEmpty == false {
+                let encryptedMessage = try await encrypt(message, using: omemo2)
+                try await chat.send(message: encryptedMessage.message)
+                return encryptedMessage.fingerprint
+            }
             guard let omemo = client.moduleOrNil(.omemo), omemo.isReady else {
                 throw LumaXMPPError.omemoNotReady
             }
@@ -1699,6 +1722,12 @@ final class XMPPService {
                 signalStorage: omemoStorage
             )
         )
+        // OMEMO 2 (urn:xmpp:omemo:2) shares the signal storage with the
+        // legacy module: Double Ratchet sessions are per-device and
+        // namespace-agnostic.
+        _ = client.modulesManager.register(
+            LumaOMEMO2Module(signalContext: signalContext, signalStorage: omemoStorage)
+        )
     }
 
     private func configureConnection(
@@ -1873,14 +1902,20 @@ final class XMPPService {
             }
             .store(in: &cancellables)
 
-        client.module(.omemo).$isReady
-            .removeDuplicates()
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] ready in
-                self?.eventHandler?(
-                    .omemo(ready: ready, ownFingerprint: omemoStorage.ownFingerprint))
-            }
-            .store(in: &cancellables)
+        // The UI is ready for encrypted messaging once either protocol
+        // has published its keys.
+        Publishers.CombineLatest(
+            client.module(.omemo).$isReady,
+            client.module(.omemo2).$isReady
+        )
+        .map { legacyReady, omemo2Ready in legacyReady || omemo2Ready }
+        .removeDuplicates()
+        .receive(on: DispatchQueue.main)
+        .sink { [weak self] ready in
+            self?.eventHandler?(
+                .omemo(ready: ready, ownFingerprint: omemoStorage.ownFingerprint))
+        }
+        .store(in: &cancellables)
     }
 
     private func deliverOrDelayDirect(_ message: Message, timestamp: Date) async {
@@ -1926,6 +1961,22 @@ final class XMPPService {
         from sender: BareJID,
         serverMsgId: String?,
         module: OMEMOModule
+    ) async -> DecryptionResult<Message, SignalError> {
+        let queue = omemoDecodeQueue
+        return await withCheckedContinuation { continuation in
+            queue.async {
+                let result = module.decode(message: message, from: sender, serverMsgId: serverMsgId)
+                continuation.resume(returning: result)
+            }
+        }
+    }
+
+    /// OMEMO 2 twin of `decodeOmemoOffMain`.
+    private func decodeOmemo2OffMain(
+        _ message: Message,
+        from sender: BareJID,
+        serverMsgId: String?,
+        module: LumaOMEMO2Module
     ) async -> DecryptionResult<Message, SignalError> {
         let queue = omemoDecodeQueue
         return await withCheckedContinuation { continuation in
@@ -1988,12 +2039,22 @@ final class XMPPService {
         let security: ChatMessage.Security
         let fingerprint: String?
         let contentMessage: Message?
-        switch await decodeOmemoOffMain(
-            message,
-            from: sender,
-            serverMsgId: archiveID,
-            module: client.module(.omemo)
-        ) {
+        let decryptionResult = await (
+            Self.isOMEMO2Payload(message)
+                ? decodeOmemo2OffMain(
+                    message,
+                    from: sender,
+                    serverMsgId: archiveID,
+                    module: client.module(.omemo2)
+                )
+                : decodeOmemoOffMain(
+                    message,
+                    from: sender,
+                    serverMsgId: archiveID,
+                    module: client.module(.omemo)
+                )
+        )
+        switch decryptionResult {
         case .successMessage(let decodedMessage, let value):
             security = .omemo
             fingerprint = value
@@ -2003,18 +2064,9 @@ final class XMPPService {
         case .failure(let error):
             switch error {
             case .notEncrypted:
-                if Self.isOMEMO2Payload(message), message.body?.isEmpty != false {
-                    // OMEMO 2 (urn:xmpp:omemo:2) is not implemented by the
-                    // pinned MartinOMEMO library; show the honest
-                    // undecryptable state instead of an empty bubble.
-                    security = .decryptionFailed
-                    fingerprint = nil
-                    contentMessage = nil
-                } else {
-                    security = .plaintext
-                    fingerprint = nil
-                    contentMessage = message
-                }
+                security = .plaintext
+                fingerprint = nil
+                contentMessage = message
             default:
                 // Some clients include a plaintext <body> fallback alongside the
                 // OMEMO <encrypted> payload. When decryption fails, prefer that
@@ -2231,6 +2283,7 @@ final class XMPPService {
             : (stanzaID ?? message.originId ?? message.id ?? UUID().uuidString)
 
         let encrypted = message.firstChild(name: "encrypted", xmlns: OMEMOModule.XMLNS) != nil
+            || message.firstChild(name: "encrypted", xmlns: LumaOMEMO2Module.XMLNS) != nil
         let realSender: BareJID?
         if outgoing {
             realSender = client.userBareJid
@@ -2252,12 +2305,22 @@ final class XMPPService {
         let fingerprint: String?
         let contentMessage: Message?
         if let realSender {
-            switch await decodeOmemoOffMain(
-                message,
-                from: realSender,
-                serverMsgId: stanzaID,
-                module: client.module(.omemo)
-            ) {
+            let decryptionResult = await (
+                Self.isOMEMO2Payload(message)
+                    ? decodeOmemo2OffMain(
+                        message,
+                        from: realSender,
+                        serverMsgId: stanzaID,
+                        module: client.module(.omemo2)
+                    )
+                    : decodeOmemoOffMain(
+                        message,
+                        from: realSender,
+                        serverMsgId: stanzaID,
+                        module: client.module(.omemo)
+                    )
+            )
+            switch decryptionResult {
             case .successMessage(let decodedMessage, let value):
                 security = .omemo
                 fingerprint = value
@@ -2267,15 +2330,9 @@ final class XMPPService {
             case .failure(let error):
                 switch error {
                 case .notEncrypted:
-                    if Self.isOMEMO2Payload(message), message.body?.isEmpty != false {
-                        security = .decryptionFailed
-                        fingerprint = nil
-                        contentMessage = nil
-                    } else {
-                        security = .plaintext
-                        fingerprint = nil
-                        contentMessage = message
-                    }
+                    security = .plaintext
+                    fingerprint = nil
+                    contentMessage = message
                 case .duplicateMessage:
                     emitGroupEchoIfPossible(
                         roomJID: roomJID,
@@ -2869,6 +2926,113 @@ final class XMPPService {
                 }
             }
         }
+    }
+
+    /// OMEMO 2 twin of `encrypt(_:using:)`.
+    private func encrypt(
+        _ message: Message,
+        using omemo: LumaOMEMO2Module
+    ) async throws -> (message: Message, fingerprint: String?) {
+        try await withCheckedThrowingContinuation { continuation in
+            omemo.encode(message: message, withStoreHint: true) { result in
+                switch result {
+                case .successMessage(let message, let fingerprint):
+                    continuation.resume(returning: (message, fingerprint))
+                case .failure(let error):
+                    continuation.resume(
+                        throwing: LumaXMPPError.omemoEncryptionFailed(error.rawValue))
+                }
+            }
+        }
+    }
+
+    /// OMEMO 2 twin of `encrypt(_:forGroupRecipients:using:)`. Keys are
+    /// nested in `<keys jid>` groups, so the per-device validation walks the
+    /// header's groups.
+    private func encrypt(
+        _ message: Message,
+        forGroupRecipients recipients: [BareJID],
+        using omemo: LumaOMEMO2Module,
+        roomJID: BareJID
+    ) async throws -> (message: Message, fingerprint: String?) {
+        let fetchedAddresses: [SignalAddress] = try await withCheckedThrowingContinuation {
+            continuation in
+            omemo.addresses(for: recipients) { result in
+                switch result {
+                case .success(let addresses):
+                    continuation.resume(returning: addresses)
+                case .failure(let error):
+                    continuation.resume(
+                        throwing: LumaXMPPError.omemoEncryptionFailed(error.rawValue))
+                }
+            }
+        }
+        let addresses = Array(Set(fetchedAddresses))
+
+        let availableJIDs = Set(addresses.map { $0.name.lowercased() })
+        let missingJIDs =
+            recipients
+            .map(\.stringValue)
+            .filter { !availableJIDs.contains($0.lowercased()) }
+        guard missingJIDs.isEmpty else {
+            throw LumaXMPPError.groupOMEMODevicesUnavailable(missingJIDs.sorted())
+        }
+
+        let addressesWithoutSessions = addresses.filter {
+            omemoStorage?.hasSession(for: $0) != true
+        }
+        guard addressesWithoutSessions.isEmpty else {
+            throw LumaXMPPError.groupOMEMOSessionsUnavailable(
+                addressesWithoutSessions
+                    .map { "\($0.name)/\($0.deviceId)" }
+                    .sorted()
+            )
+        }
+
+        let encryptedMessage: (message: Message, fingerprint: String?) =
+            try await withCheckedThrowingContinuation { continuation in
+                omemo.encode(
+                    message: message,
+                    forAddresses: addresses,
+                    roomJID: roomJID,
+                    withStoreHint: true
+                ) { result in
+                    switch result {
+                    case .successMessage(let message, let fingerprint):
+                        continuation.resume(returning: (message, fingerprint))
+                    case .failure(let error):
+                        continuation.resume(
+                            throwing: LumaXMPPError.omemoEncryptionFailed(error.rawValue))
+                    }
+                }
+            }
+
+        var encryptedKeyCounts: [Int32: Int] = [:]
+        if let encrypted = encryptedMessage.message.firstChild(
+            name: "encrypted", xmlns: LumaOMEMO2Module.XMLNS
+        ), let header = encrypted.findChild(name: "header") {
+            var keyElements: [Element] = []
+            for keysEl in header.getChildren(where: { $0.name == "keys" }) {
+                keyElements.append(contentsOf: keysEl.getChildren(where: { $0.name == "key" }))
+            }
+            keyElements
+                .compactMap { $0.getAttribute("rid").flatMap(Int32.init) }
+                .forEach { encryptedKeyCounts[$0, default: 0] += 1 }
+        }
+
+        var unavailableAddresses: [String] = []
+        for address in addresses {
+            let availableCount = encryptedKeyCounts[address.deviceId, default: 0]
+            if availableCount > 0 {
+                encryptedKeyCounts[address.deviceId] = availableCount - 1
+            } else {
+                unavailableAddresses.append("\(address.name)/\(address.deviceId)")
+            }
+        }
+        guard unavailableAddresses.isEmpty else {
+            throw LumaXMPPError.groupOMEMOSessionsUnavailable(unavailableAddresses.sorted())
+        }
+        return encryptedMessage
     }
 
     private func encrypt(

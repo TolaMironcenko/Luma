@@ -31,8 +31,7 @@ packages:
     url: https://github.com/tigase/Martin.git
     exactVersion: 3.2.4
   MartinOMEMO:
-    url: https://github.com/tigase/MartinOMEMO.git
-    exactVersion: 2.2.3
+    path: ThirdParty/MartinOMEMO
   WebRTC:
     url: https://github.com/stasel/WebRTC.git
     exactVersion: 150.0.0

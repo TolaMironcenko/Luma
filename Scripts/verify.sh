@@ -302,6 +302,22 @@ grep -q 'toolbar(.hidden, for: .tabBar)' Sources/Shared/UI/ChatView.swift || {
   echo "The tab bar must be hidden inside a pushed chat"
   exit 1
 }
+grep -q 'PhoneWatchMessageData' Sources/Shared/Services/PhoneWatchBridge.swift || {
+  echo "The watch bridge must snapshot SwiftData models on the main actor"
+  exit 1
+}
+grep -q 'urn:xmpp:omemo:2' Sources/Shared/XMPP/LumaOMEMO2Module.swift || {
+  echo "OMEMO 2 must be implemented by the app-level module"
+  exit 1
+}
+grep -q 'decodeOmemo2OffMain' Sources/Shared/XMPP/XMPPService.swift || {
+  echo "Incoming messages must route OMEMO 2 payloads to the OMEMO 2 module"
+  exit 1
+}
+grep -q 'package = .*XCLocalSwiftPackageReference .ThirdParty/MartinOMEMO.' Luma.xcodeproj/project.pbxproj || {
+  echo "The vendored MartinOMEMO package must stay linked in the generated project (run make project)"
+  exit 1
+}
 grep -q '@Query' Sources/Shared/UI/ChatView.swift || {
   echo "Chat timeline must be SwiftData @Query-driven"
   exit 1

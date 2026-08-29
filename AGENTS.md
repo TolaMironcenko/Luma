@@ -19,8 +19,10 @@ and the Martin / MartinOMEMO libraries. The Xcode project is generated from
     macOS Telegram Desktop-style split view (`MainSplitView`: sidebar
     with menu/search/list plus a chat detail pane).
   - `XMPP/` — `XMPPService` (MAM/OMEMO/MUC), `LumaCallEngine`, OMEMO store,
-    `SASLprep` (RFC 4013), SCRAM-SHA-512 mechanism, SASL failure
-    observer/messages.
+    `LumaOMEMO2Module` (urn:xmpp:omemo:2 wire format: AES-256-CBC + HMAC
+    payload, SCE envelope, device/bundle PEP nodes — shares the Double
+    Ratchet sessions with the legacy module), `SASLprep` (RFC 4013),
+    SCRAM-SHA-512 mechanism, SASL failure observer/messages.
   - `Persistence/` — `ArchiveStore` (per-account SwiftData container),
     `ArchiveMetadataRecord` (durable MAM checkpoint metadata),
     `LegacyArchiveImporter` (one-time legacy JSON snapshot migration),

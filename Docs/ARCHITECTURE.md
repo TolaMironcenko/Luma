@@ -39,6 +39,19 @@ XEP-0045-комнатами в отдельном разделе «Группо�
 fallback на plaintext. UI сразу показывает optimistic message и обновляет
 состояние по результату записи/receipt.
 
+## OMEMO 2
+
+Помимо legacy `eu.siacs.conversations.axolotl` (MartinOMEMO) поддерживается
+`urn:xmpp:omemo:2` (XEP-0384 0.8.3) через собственный модуль
+`LumaOMEMO2Module`: payload — AES-256-CBC + HMAC-SHA-256 (HKDF, info
+«OMEMO Payload»), plaintext — SCE-envelope (XEP-0420); device list и bundle
+публикуются в PEP-узлах `urn:xmpp:omemo:2:devices` /
+`urn:xmpp:omemo:2:bundles`. Double Ratchet-сессии общие с legacy-модулем
+(тот же `LumaOMEMOStore`). Исходящие предпочитают OMEMO 2, когда у собеседника
+есть OMEMO 2-устройства (в группах — только если устройства есть у всех
+участников), иначе используется legacy. MartinOMEMO завендорен в
+`ThirdParty/` с точечными патчами видимости (см. `THIRD_PARTY_NOTICES.md`).
+
 Входящая stanza может прийти напрямую, через carbons или MAM. Сервис определяет
 peer, расшифровывает payload, использует `origin-id`/stanza id для дедупликации и
 передаёт value-type envelope в `AppModel`. Дедупликация выполняется по
