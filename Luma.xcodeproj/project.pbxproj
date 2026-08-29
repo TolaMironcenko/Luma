@@ -16,7 +16,6 @@
 		03F2CD213153D0EF5CBC8021 /* EncryptionPreferenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD286F7AF06DFC5488FF0CEA /* EncryptionPreferenceTests.swift */; };
 		0535722A2D4FC893F16D78F1 /* MessageReplySwipeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77D3F72BE63D8F360ECA0419 /* MessageReplySwipeTests.swift */; };
 		067D121E9C8D8EA076D974FB /* RTCVideoRendererView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5003B4F9DF154543555E9825 /* RTCVideoRendererView.swift */; };
-		08696800299D2D7BCCBCAA58 /* MainChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3AA66547A2AA2D0979DA76E /* MainChatView.swift */; };
 		087E600676B3F6134BB26112 /* CallView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B11FED2D58621C071C3AD14 /* CallView.swift */; };
 		088945A14C15828F5265AA29 /* ArchiveSyncRecoveryPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28187D29B1BB6E3ECB02F637 /* ArchiveSyncRecoveryPolicy.swift */; };
 		097E9E96B82958C505DCA514 /* OMEMODevice.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1ABB449DF3A7746361FC75C /* OMEMODevice.swift */; };
@@ -101,6 +100,7 @@
 		5875F7D2870C985287B36AFA /* MessageReplyFallbackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCAACA105F4B9699F59805F9 /* MessageReplyFallbackTests.swift */; };
 		58A606B016094F1845CB0119 /* LocationMessagePreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = B96E7970930AB7F09CB5DA9C /* LocationMessagePreview.swift */; };
 		5D80C9CBCE79DE69A7A6ABA4 /* AppLockView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B5AEFC4FD65BA34FF030467 /* AppLockView.swift */; };
+		6000FF9931D3399B53C8506C /* MainTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99F26F5B024C5B4BF74CF242 /* MainTabView.swift */; };
 		60CE79BB4D0FB53E126354AA /* GroupConversationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6773F87EE60F91BBDCA4B1F5 /* GroupConversationTests.swift */; };
 		6156698A5A514CA01411489D /* VideoAttachmentPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = A88E48AAC10463764CAD9835 /* VideoAttachmentPreview.swift */; };
 		61D41048E5021EEAC434DD90 /* CallSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 375633EF5E4AEC9D5F284C6C /* CallSnapshotTests.swift */; };
@@ -133,7 +133,6 @@
 		7BC399937E4586EC5067282C /* GeoLocation.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD13FA20B6C2CD8B6718BF86 /* GeoLocation.swift */; };
 		7C89D0095051D751FA245324 /* ArchiveMetadataRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CC7F3C5D27D08B1B01D712C /* ArchiveMetadataRecord.swift */; };
 		7D93BF350FBBF6F9EB29BA23 /* MediaPickerSelectionPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1E6875B522254FFB5FA880E /* MediaPickerSelectionPolicy.swift */; };
-		7DA3177772595E37DC8066E4 /* MainChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3AA66547A2AA2D0979DA76E /* MainChatView.swift */; };
 		7F012252FA73A8282B92323C /* LumaApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8C051C2A7014E8B5E825477 /* LumaApp.swift */; };
 		7F211C3BBA81E5D43D3A88AE /* LumaCallEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72EC7DC2FE873C0BA4321496 /* LumaCallEngine.swift */; };
 		7F4C00E98574C8E5193F442E /* LumaRosterStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F92830FB64B5BD0A06BC828D /* LumaRosterStore.swift */; };
@@ -203,6 +202,7 @@
 		CC152AA73AC9347A300BBECC /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A338A8EB30206647BDD922F /* SettingsView.swift */; };
 		CC51DABF2D4E07795E1B78C0 /* LegacyArchiveImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA1D94FE541121DAE9DCE3B0 /* LegacyArchiveImporter.swift */; };
 		CC5297F90A3DBD45C5E41A3A /* MediaViewer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4380219D3AF1D75EDF4D3167 /* MediaViewer.swift */; };
+		D12F19AE38C13C6F37A36614 /* MainTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99F26F5B024C5B4BF74CF242 /* MainTabView.swift */; };
 		D246709CE1508C297DD28AE1 /* NotificationCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A5B4C1116F6ACB6F9B64BF4 /* NotificationCoordinator.swift */; };
 		D3389B083A5780A9C06B23DF /* GroupInfoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAA74044D62409FAC6062BC1 /* GroupInfoView.swift */; };
 		D3777F3C0A81F08A9983048B /* StaticDNSSrvResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8CABD9D1B4C987EF6AB19A6 /* StaticDNSSrvResolver.swift */; };
@@ -383,6 +383,7 @@
 		96720381802141EBA1DA9772 /* LumaUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = LumaUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		96829BDC257FD8D61083DA4D /* VideoNoteRecordingLifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoNoteRecordingLifecycle.swift; sourceTree = "<group>"; };
 		99BE34DC082D19007241AA62 /* NewGroupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewGroupView.swift; sourceTree = "<group>"; };
+		99F26F5B024C5B4BF74CF242 /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
 		9A338A8EB30206647BDD922F /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		9B11FED2D58621C071C3AD14 /* CallView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallView.swift; sourceTree = "<group>"; };
 		9C8B12EFBC83F9235B6AF992 /* VideoNoteRecordingCompletionPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoNoteRecordingCompletionPolicyTests.swift; sourceTree = "<group>"; };
@@ -420,7 +421,6 @@
 		CD286F7AF06DFC5488FF0CEA /* EncryptionPreferenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EncryptionPreferenceTests.swift; sourceTree = "<group>"; };
 		D1407657E9EBF5EC3FC1D327 /* VideoNotePreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoNotePreview.swift; sourceTree = "<group>"; };
 		D2678D358CD6B7DD331AABD1 /* ArchiveSyncCheckpointTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveSyncCheckpointTests.swift; sourceTree = "<group>"; };
-		D3AA66547A2AA2D0979DA76E /* MainChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainChatView.swift; sourceTree = "<group>"; };
 		D414B62940A9234C51C3D14E /* MessageReaction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageReaction.swift; sourceTree = "<group>"; };
 		D5746D1E21ABBBCFC6CD9694 /* AvatarImageProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AvatarImageProcessor.swift; sourceTree = "<group>"; };
 		D724713196AD2063C7FAD08F /* AudioMessagePlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioMessagePlayer.swift; sourceTree = "<group>"; };
@@ -647,7 +647,7 @@
 				BAA74044D62409FAC6062BC1 /* GroupInfoView.swift */,
 				2786A15415F65305F78D892C /* LocationPickerView.swift */,
 				05EEEE8A125347F7C5014A09 /* LoginView.swift */,
-				D3AA66547A2AA2D0979DA76E /* MainChatView.swift */,
+				99F26F5B024C5B4BF74CF242 /* MainTabView.swift */,
 				43A4CE3E678096BA76F2988C /* NewChatView.swift */,
 				99BE34DC082D19007241AA62 /* NewGroupView.swift */,
 				515DD6F1F80A848C39EBAE84 /* RootView.swift */,
@@ -988,7 +988,7 @@
 				F1713D1CD4E019540BFA78FE /* LumaRosterStore.swift in Sources */,
 				0BD15E9B1C488AA2B7B56AF7 /* LumaSaslFailureModule.swift in Sources */,
 				E6B279889E62AB9AD0C5BCE1 /* LumaScramSha512Mechanism.swift in Sources */,
-				08696800299D2D7BCCBCAA58 /* MainChatView.swift in Sources */,
+				D12F19AE38C13C6F37A36614 /* MainTabView.swift in Sources */,
 				0E4CE634E1568EE121B8AF75 /* MediaFileIO.swift in Sources */,
 				2822384FC6AF9685C4D014C1 /* MediaMetadata.swift in Sources */,
 				7D93BF350FBBF6F9EB29BA23 /* MediaPickerSelectionPolicy.swift in Sources */,
@@ -1101,7 +1101,7 @@
 				7F4C00E98574C8E5193F442E /* LumaRosterStore.swift in Sources */,
 				C1AB954660804F7925607038 /* LumaSaslFailureModule.swift in Sources */,
 				127C4B7A5083081D22FD21CD /* LumaScramSha512Mechanism.swift in Sources */,
-				7DA3177772595E37DC8066E4 /* MainChatView.swift in Sources */,
+				6000FF9931D3399B53C8506C /* MainTabView.swift in Sources */,
 				EFC29F3543B1371E63D48510 /* MediaFileIO.swift in Sources */,
 				AFCBFB59F729DE95E453A7D3 /* MediaMetadata.swift in Sources */,
 				D80DC91DBAE924BE47EFBD6F /* MediaPickerSelectionPolicy.swift in Sources */,

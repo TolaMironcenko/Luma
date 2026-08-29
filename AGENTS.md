@@ -11,9 +11,10 @@ and the Martin / MartinOMEMO libraries. The Xcode project is generated from
   - `Models/` — value types and pure policy enums (`ArchiveSyncPagination`,
     `ChatTypingPolicy`, …) plus the SwiftData `@Model` classes
     (`ChatMessage`, `Conversation`).
-  - `UI/` — SwiftUI views; chat list, timeline and forward picker read
-    SwiftData through `@Query` (`MainChatView`, `ChatView`,
-    `ForwardMessageView`).
+  - `UI/` — SwiftUI views; chat/contact lists read SwiftData through
+    `@Query` (`MainTabView`, `ChatView`, `ForwardMessageView`); the main
+    screen is a Telegram-style bottom tab bar (Контакты/Звонки/Чаты/
+    Настройки).
   - `XMPP/` — `XMPPService` (MAM/OMEMO/MUC), `LumaCallEngine`, OMEMO store,
     `SASLprep` (RFC 4013), SCRAM-SHA-512 mechanism, SASL failure
     observer/messages.

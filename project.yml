@@ -213,8 +213,7 @@ schemes:
       config: Debug
       targets:
         - LumaTests
-      # LumaUITests are opt-in (flaky under parallel CI load): run them with
-      # xcodebuild test -only-testing:LumaUITests
+        - LumaUITests
     archive:
       config: Release
   LumaMac:

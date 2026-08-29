@@ -29,13 +29,16 @@ jobs:
       - name: Resolve Swift Packages
         run: xcodebuild -resolvePackageDependencies -project Luma.xcodeproj -scheme Luma
 
-      # Step 4: Build and run tests using xcodebuild
+      # Step 4: Build and run tests using xcodebuild. CI runs the
+      # deterministic unit tests only; the UI tests (LumaUITests) are
+      # exercised manually on a simulator.
       - name: Build and Test
         run: |
           xcodebuild test \
             -project Luma.xcodeproj \
             -scheme Luma \
             -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max,OS=26.4.1' \
+            -only-testing:LumaTests \
             -resultBundlePath TestResults.xcresult
 
       - name: Upload Test Results

@@ -16,7 +16,7 @@ struct RootView: View {
                     if model.account == nil {
                         LoginView(model: model)
                     } else {
-                        MainChatView(model: model)
+                        MainTabView(model: model)
                             .environment(\.modelContext, model.modelContext)
                     }
                 }

@@ -251,6 +251,16 @@ final class AppModel: ObservableObject {
         )
     }
 
+    /// Aggregated call history for the «Звонки» tab, newest first.
+    var callHistoryMessages: [ChatMessage] {
+        messages
+            .filter { $0.callHistory != nil }
+            .sorted { lhs, rhs in
+                if lhs.timestamp != rhs.timestamp { return lhs.timestamp > rhs.timestamp }
+                return lhs.clientID < rhs.clientID
+            }
+    }
+
     var selectedMessages: [ChatMessage] {
         guard let selectedConversationID else { return [] }
         if selectedMessagesCacheConversationID == selectedConversationID {

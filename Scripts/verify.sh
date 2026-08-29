@@ -282,7 +282,7 @@ if test -f Sources/Shared/Persistence/ChatArchive.swift; then
   echo "The legacy JSON ChatArchive actor must stay removed"
   exit 1
 fi
-grep -q '@Query' Sources/Shared/UI/MainChatView.swift || {
+grep -q '@Query' Sources/Shared/UI/MainTabView.swift || {
   echo "Chat list must be SwiftData @Query-driven"
   exit 1
 }
@@ -378,7 +378,7 @@ grep -q 'Удалить чат' Sources/Shared/UI/GroupInfoView.swift || {
   echo "Group info must offer deleting the chat"
   exit 1
 }
-grep -q 'pendingGroupDeletion' Sources/Shared/UI/MainChatView.swift || {
+grep -q 'pendingGroupDeletion' Sources/Shared/UI/MainTabView.swift || {
   echo "Chat list must offer deleting group chats"
   exit 1
 }
@@ -408,6 +408,14 @@ grep -q 'urn:xmpp:omemo:2' Sources/Shared/XMPP/XMPPService.swift || {
 }
 grep -q 'biometricUnlockAvailable' Sources/Shared/Models/AppModel.swift || {
   echo "Biometric availability must be cached off the view body"
+  exit 1
+}
+grep -q 'Звонки' Sources/Shared/UI/MainTabView.swift || {
+  echo "The main screen must offer the Calls tab"
+  exit 1
+}
+grep -q 'Настройки' Sources/Shared/UI/MainTabView.swift || {
+  echo "The main screen must offer the Settings tab"
   exit 1
 }
 grep -q 'case .background:' Sources/App/LumaApp.swift || {
@@ -770,7 +778,7 @@ grep -q 'failedDrafts' Sources/Shared/UI/AttachmentPreviewView.swift || {
   echo "Failed media drafts must remain available for retry"
   exit 1
 }
-grep -q 'rosterContactJIDs' Sources/Shared/UI/MainChatView.swift || {
+grep -q 'rosterContactJIDs' Sources/Shared/UI/MainTabView.swift || {
   echo "Prosody roster contacts screen is missing"
   exit 1
 }

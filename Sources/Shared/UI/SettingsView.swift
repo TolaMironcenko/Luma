@@ -4,6 +4,9 @@ import SwiftUI
 
 struct SettingsView: View {
     @ObservedObject var model: AppModel
+    /// When embedded as the «Настройки» tab there is no sheet to dismiss,
+    /// so the confirmation toolbar button is hidden.
+    var presentedAsTab: Bool = false
     @Environment(\.dismiss) private var dismiss
     @State private var showingSignOutConfirmation = false
     @State private var forgetHistory = false
@@ -152,8 +155,10 @@ struct SettingsView: View {
             }
             .navigationTitle("Настройки")
             .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Готово") { dismiss() }
+                if !presentedAsTab {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Готово") { dismiss() }
+                    }
                 }
             }
             .confirmationDialog(
