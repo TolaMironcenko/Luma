@@ -46,6 +46,30 @@ final class MessageReplySwipeTests: XCTestCase {
         ))
     }
 
+    func testDiagonalScrollAtOldThresholdDoesNotReply() {
+        // width/height ≈ 1.5 passed the old 1.4 dominance and moved bubbles
+        // during scrolling; the stricter policy must stay silent.
+        XCTAssertFalse(MessageReplySwipePolicy.shouldReply(
+            translation: CGSize(width: 60, height: 40),
+            predictedEndTranslation: CGSize(width: 60, height: 40)
+        ))
+        XCTAssertEqual(
+            MessageReplySwipePolicy.offset(for: CGSize(width: 60, height: 40)),
+            0
+        )
+    }
+
+    func testIndicatorStaysHiddenUntilActivationDistance() {
+        XCTAssertEqual(
+            MessageReplySwipePolicy.offset(for: CGSize(width: 20, height: 0)),
+            0
+        )
+        XCTAssertGreaterThan(
+            MessageReplySwipePolicy.offset(for: CGSize(width: 24, height: 0)),
+            0
+        )
+    }
+
     func testVisualOffsetIsCapped() {
         XCTAssertEqual(
             MessageReplySwipePolicy.offset(for: CGSize(width: 500, height: 0)),

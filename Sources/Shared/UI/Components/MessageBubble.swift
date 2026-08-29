@@ -177,9 +177,16 @@ struct MessageBubble: View {
         DragGesture(minimumDistance: 20)
             .onChanged { value in
                 let offset = MessageReplySwipePolicy.offset(for: value.translation)
-                guard offset != 0 || replySwipeOffset != 0 else {
-                    // A vertical timeline pan must not publish per-cell state
-                    // changes or compete with UIScrollView's own recognizer.
+                guard offset != 0 else {
+                    // Vertical (or not clearly horizontal) movement: snap the
+                    // indicator back and never publish per-cell state changes
+                    // during an ordinary timeline scroll.
+                    if replySwipeOffset != 0 || replySwipeArmed {
+                        withAnimation(.spring(response: 0.24, dampingFraction: 0.82)) {
+                            replySwipeOffset = 0
+                        }
+                        replySwipeArmed = false
+                    }
                     return
                 }
                 replySwipeOffset = offset
