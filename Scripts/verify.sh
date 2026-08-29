@@ -86,7 +86,9 @@ required=(
   Tests/MediaPreviewProcessorVideoTests.swift
   Tests/SCRAMSHA512Tests.swift
   Tests/AppLockPolicyTests.swift
+  Tests/CallHistorySyncTests.swift
   Sources/Shared/XMPP/LumaScramSha512Mechanism.swift
+  Sources/Shared/XMPP/CallHistorySync.swift
   Sources/Shared/Security/AppLockVault.swift
   Sources/Shared/Models/AppLockPolicy.swift
   Sources/Shared/UI/AppLockView.swift
@@ -349,6 +351,18 @@ grep -q 'AppLockView' Sources/Shared/UI/RootView.swift || {
 }
 grep -q 'Блокировка приложения' Sources/Shared/UI/SettingsView.swift || {
   echo "Settings must offer the app lock toggle"
+  exit 1
+}
+grep -q 'https://luma.chat/call-history' Sources/Shared/XMPP/CallHistorySync.swift || {
+  echo "Call history must sync through its service namespace"
+  exit 1
+}
+grep -q 'syncCallHistory' Sources/Shared/Models/AppModel.swift || {
+  echo "Call cards must be synced to the user's other devices"
+  exit 1
+}
+grep -q 'CallHistorySync.envelope' Sources/Shared/XMPP/XMPPService.swift || {
+  echo "Incoming call-history payloads must be intercepted"
   exit 1
 }
 grep -q 'func deleteGroupChat' Sources/Shared/Models/AppModel.swift || {

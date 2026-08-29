@@ -2,6 +2,7 @@ import Combine
 import Foundation
 @preconcurrency import Martin
 @preconcurrency import MartinOMEMO
+import os
 import WebRTC
 
 private struct BufferedArchiveStanza {
@@ -254,6 +255,7 @@ final class XMPPService {
         case mucArchiveSyncCompleted(archive: MAMArchiveKey, checkpoint: MAMArchiveCheckpoint)
         case call(CallSnapshot?)
         case callHistory(CallHistoryEntry)
+        case callHistorySync(CallHistorySync.Envelope)
         case callError(String)
         case recoverableError(String)
     }
@@ -765,6 +767,37 @@ final class XMPPService {
             )
         }
     }
+
+    /// Sends a `<call-history/>` service message to the user's own bare JID
+    /// so Carbons deliver it to the other devices and MAM archives it. The
+    /// message is plaintext and never reaches the call counterpart.
+    func syncCallHistory(_ entry: CallHistoryEntry) {
+        guard let client, client.state == .connected(), let account else { return }
+        let message = Message()
+        message.to = JID(account.normalizedJID)
+        message.type = .chat
+        message.id = entry.id
+        message.body = Self.callHistoryBody(entry)
+        addOriginID(entry.id, to: message)
+        message.addChild(CallHistorySync.payloadElement(entry: entry))
+        client.context.writer.write(message, writeCompleted: nil)
+        Logger(subsystem: "Luma", category: "call-sync")
+            .info("sent call-history id=\(entry.id) peer=\(entry.peerJID) status=\(entry.outcome.rawValue)")
+    }
+
+    private static func callHistoryBody(_ entry: CallHistoryEntry) -> String {
+        let kind = entry.isVideo ? "Видеозвонок" : "Аудиозвонок"
+        switch entry.outcome {
+        case .completed: return "\(kind) завершён"
+        case .missed: return "Пропущенный \(kind.lowercased())"
+        case .declined: return "Отклонённый \(kind.lowercased())"
+        case .cancelled: return "Отменённый \(kind.lowercased())"
+        case .unanswered: return "\(kind) без ответа"
+        case .failed: return "Неудачный \(kind.lowercased())"
+        case .answeredElsewhere: return "\(kind) принят на другом устройстве"
+        }
+    }
+
 
     func sendText(
         _ text: String,
@@ -1895,6 +1928,14 @@ final class XMPPService {
         isArchived: Bool = false,
         archivedPeerJID: BareJID? = nil
     ) async {
+        // Call-history service messages sync call cards between the user's
+        // devices; they never become ordinary chat messages.
+        if let sync = CallHistorySync.envelope(from: message) {
+            Logger(subsystem: "Luma", category: "call-sync")
+                .info("received call-history id=\(sync.id) peer=\(sync.peerJID) status=\(sync.outcome.rawValue)")
+            eventHandler?(.callHistorySync(sync))
+            return
+        }
         guard message.type != .error,
             message.type != .groupchat,
             let client,

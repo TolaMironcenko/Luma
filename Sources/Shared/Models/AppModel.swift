@@ -2090,6 +2090,8 @@ final class AppModel: ObservableObject {
             activeCall = call
         case .callHistory(let entry):
             recordCallHistory(entry)
+        case .callHistorySync(let envelope):
+            recordSyncedCallHistory(envelope)
         case .callError(let message):
             errorMessage = message
         case .recoverableError(let message):
@@ -2268,6 +2270,42 @@ final class AppModel: ObservableObject {
     }
 
     private func recordCallHistory(_ entry: CallHistoryEntry) {
+        guard let account else { return }
+        let direction: ChatMessage.Direction =
+            entry.direction == .outgoing
+            ? .outgoing
+            : .incoming
+        let metadata = CallHistoryMetadata(
+            isVideo: entry.isVideo,
+            outcome: entry.outcome
+        )
+        let message = ChatMessage(
+            id: entry.id,
+            conversationID: entry.peerJID,
+            senderJID: direction == .outgoing ? account.normalizedJID : entry.peerJID,
+            body: entry.isVideo ? "Видеозвонок" : "Аудиозвонок",
+            timestamp: entry.startedAt,
+            direction: direction,
+            delivery: direction == .outgoing ? .sent : .delivered,
+            security: .plaintext,
+            kind: .system,
+            duration: entry.duration,
+            callHistory: metadata
+        )
+        let isUnreadMissedCall =
+            direction == .incoming
+            && entry.outcome == .missed
+            && selectedConversationID != entry.peerJID.lowercased()
+        _ = upsertMessage(message, incrementUnread: isUnreadMissedCall)
+        // Sync the card to the user's other devices via Carbons/MAM.
+        xmpp.syncCallHistory(entry)
+    }
+
+    /// Applies a call card received from another of the user's devices. The
+    /// envelope id equals the origin-id of the sync message, which also equals
+    /// the originating device's local clientID, so Carbons and MAM copies
+    /// deduplicate into a single card.
+    private func recordSyncedCallHistory(_ entry: CallHistorySync.Envelope) {
         guard let account else { return }
         let direction: ChatMessage.Direction =
             entry.direction == .outgoing
