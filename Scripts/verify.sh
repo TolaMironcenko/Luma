@@ -286,6 +286,22 @@ grep -q '@Query' Sources/Shared/UI/MainTabView.swift || {
   echo "Chat list must be SwiftData @Query-driven"
   exit 1
 }
+grep -q 'NavigationSplitView' Sources/Shared/UI/MainTabView.swift || {
+  echo "macOS must keep the Telegram Desktop-style split view"
+  exit 1
+}
+grep -q 'SearchField' Sources/Shared/UI/MainTabView.swift || {
+  echo "Search fields must stay inline above the lists"
+  exit 1
+}
+grep -q 'TabView(selection:' Sources/Shared/UI/MainTabView.swift || {
+  echo "The iOS main screen must use the native TabView tab bar"
+  exit 1
+}
+grep -q 'toolbar(.hidden, for: .tabBar)' Sources/Shared/UI/ChatView.swift || {
+  echo "The tab bar must be hidden inside a pushed chat"
+  exit 1
+}
 grep -q '@Query' Sources/Shared/UI/ChatView.swift || {
   echo "Chat timeline must be SwiftData @Query-driven"
   exit 1

@@ -13,8 +13,11 @@ and the Martin / MartinOMEMO libraries. The Xcode project is generated from
     (`ChatMessage`, `Conversation`).
   - `UI/` — SwiftUI views; chat/contact lists read SwiftData through
     `@Query` (`MainTabView`, `ChatView`, `ForwardMessageView`); the main
-    screen is a Telegram-style bottom tab bar (Контакты/Звонки/Чаты/
-    Настройки).
+    screen is Telegram-style: an iOS native `TabView` tab bar
+    (Контакты/Звонки/Чаты/Настройки) with inline search fields above
+    the lists, and a
+    macOS Telegram Desktop-style split view (`MainSplitView`: sidebar
+    with menu/search/list plus a chat detail pane).
   - `XMPP/` — `XMPPService` (MAM/OMEMO/MUC), `LumaCallEngine`, OMEMO store,
     `SASLprep` (RFC 4013), SCRAM-SHA-512 mechanism, SASL failure
     observer/messages.

@@ -226,6 +226,9 @@ struct ChatView: View {
                 replyThreadSelection == nil ? .visible : .hidden,
                 for: .navigationBar
             )
+            // A pushed conversation takes the whole screen; the tab bar
+            // comes back when the user pops back to the list.
+            .toolbar(.hidden, for: .tabBar)
         #endif
         .fileImporter(
             isPresented: $showingFileImporter,
