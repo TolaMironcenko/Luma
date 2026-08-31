@@ -440,7 +440,7 @@
 		E6A5C32B4DACD56DA733A0DB /* ServerInformation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerInformation.swift; sourceTree = "<group>"; };
 		E9F226A1F8D82B39630F9CEB /* LumaRoomStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LumaRoomStore.swift; sourceTree = "<group>"; };
 		EA1D94FE541121DAE9DCE3B0 /* LegacyArchiveImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegacyArchiveImporter.swift; sourceTree = "<group>"; };
-		EA54340DD785335237158BEF /* LumaMac.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; name = LumaMac.app; path = Luma.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		EA54340DD785335237158BEF /* Luma.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Luma.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F0A35C9A7B52458996513382 /* WatchVoiceRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchVoiceRecorder.swift; sourceTree = "<group>"; };
 		F207C1B20DE3780F1754F81D /* ConnectionBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionBanner.swift; sourceTree = "<group>"; };
 		F26F91180E43DE9C135B68C1 /* EmojiCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmojiCatalog.swift; sourceTree = "<group>"; };
@@ -714,7 +714,7 @@
 			isa = PBXGroup;
 			children = (
 				DF8C531E464C9C4EDE2648C6 /* Luma.app */,
-				EA54340DD785335237158BEF /* LumaMac.app */,
+				EA54340DD785335237158BEF /* Luma.app */,
 				6317FAA29F22A3EA8450208F /* LumaTests.xctest */,
 				96720381802141EBA1DA9772 /* LumaUITests.xctest */,
 				19D4E9404712E8643E31CB93 /* LumaWatch.app */,
@@ -807,7 +807,7 @@
 				2A745A82DD6F34F0CB46B52B /* WebRTC */,
 			);
 			productName = LumaMac;
-			productReference = EA54340DD785335237158BEF /* LumaMac.app */;
+			productReference = EA54340DD785335237158BEF /* Luma.app */;
 			productType = "com.apple.product-type.application";
 		};
 		A086B6D25E7969CB643F1C8A /* LumaUITests */ = {
@@ -1255,7 +1255,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				PRODUCT_BUNDLE_IDENTIFIER = app.luma.chat.macos;
 				PRODUCT_NAME = Luma;
 				SDKROOT = macosx;
@@ -1277,7 +1277,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				PRODUCT_BUNDLE_IDENTIFIER = app.luma.chat.macos;
 				PRODUCT_NAME = Luma;
 				SDKROOT = macosx;

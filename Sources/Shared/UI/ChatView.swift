@@ -814,7 +814,7 @@ struct ChatView: View {
             } else if let replyingToMessage {
                 replyBanner(replyingToMessage)
             }
-            HStack(alignment: .bottom, spacing: 8) {
+            HStack(alignment: .center, spacing: 8) {
                 TextField(
                     editingMessageID == nil
                         ? "Сообщение" : "Изменить сообщение",
@@ -843,26 +843,7 @@ struct ChatView: View {
         .padding(.trailing, 12)
         .padding(.vertical, 9)
         .frame(minHeight: 42)
-        .background(
-            .ultraThinMaterial,
-            in: RoundedRectangle(cornerRadius: 21, style: .continuous)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 21, style: .continuous)
-                .stroke(
-                    LinearGradient(
-                        colors: [
-                            Color.white.opacity(0.3),
-                            Color.secondary.opacity(0.18),
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    ),
-                    lineWidth: 0.75
-                )
-        )
-        .shadow(color: .black.opacity(0.075), radius: 8, y: 2)
-        .contentShape(RoundedRectangle(cornerRadius: 21, style: .continuous))
+        .glassEffect(in: .rect(cornerRadius: 21))
     }
 
     @ViewBuilder
@@ -875,21 +856,14 @@ struct ChatView: View {
                         canUseComposer ? Color.accentColor : Color.secondary
                     )
                     .frame(width: 42, height: 42)
-                    .background(.ultraThinMaterial, in: Circle())
-                    .overlay(
-                        Circle()
-                            .stroke(
-                                Color.secondary.opacity(0.2),
-                                lineWidth: 0.75
-                            )
-                    )
-                    .shadow(color: .black.opacity(0.075), radius: 8, y: 2)
+//                    .background(.ultraThinMaterial, in: Circle())
             }
             .buttonStyle(.plain)
             .disabled(!canUseComposer)
             .accessibilityLabel(
                 editingMessageID == nil ? "Отправить" : "Сохранить исправление"
             )
+            .glassEffect()
         } else {
             TelegramRecordButton(
                 mode: .voice,
@@ -968,15 +942,6 @@ struct ChatView: View {
             }
         } label: {
             ZStack {
-                Circle()
-                    .fill(.ultraThinMaterial)
-                    .overlay(
-                        Circle()
-                            .stroke(
-                                Color.secondary.opacity(0.18),
-                                lineWidth: 0.75
-                            )
-                    )
                 if model.isSendingAttachment || isPreparingAttachments {
                     ProgressView()
                         .controlSize(.small)
@@ -987,8 +952,8 @@ struct ChatView: View {
                 }
             }
             .frame(width: 42, height: 42)
-            .shadow(color: .black.opacity(0.075), radius: 8, y: 2)
             .contentShape(Circle())
+            .glassEffect()
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Добавить вложение")
@@ -1166,14 +1131,7 @@ struct ChatView: View {
         }
         .padding(.horizontal, 13)
         .frame(minHeight: 42)
-        .background(
-            .ultraThinMaterial,
-            in: RoundedRectangle(cornerRadius: 21, style: .continuous)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 21, style: .continuous)
-                .stroke(Color.secondary.opacity(0.2), lineWidth: 0.75)
-        )
+        .glassEffect()
     }
 
     private var recordingLockIndicator: some View {
@@ -1185,10 +1143,7 @@ struct ChatView: View {
         }
         .foregroundStyle(.primary)
         .frame(width: 38, height: 55)
-        .background(.ultraThinMaterial, in: Capsule())
-        .overlay(
-            Capsule().stroke(Color.secondary.opacity(0.22), lineWidth: 0.75)
-        )
+        .glassEffect(in: Capsule())
         .accessibilityLabel("Проведите вверх, чтобы зафиксировать запись")
     }
 
@@ -1799,8 +1754,6 @@ struct ChatView: View {
             Capsule()
                 .fill(Color.accentColor)
                 .frame(width: 3, height: 34)
-//            Image(systemName: "pencil")
-//                .foregroundStyle(.tint)
             VStack(alignment: .leading, spacing: 1) {
                 Text("Редактирование")
                     .font(.caption.weight(.semibold))
@@ -1818,8 +1771,6 @@ struct ChatView: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Отменить редактирование")
         }
-        //        .padding(.horizontal, 14)
-        //        .padding(.top, 8)
     }
 
     /// Telegram-style reply plate: a rounded card above the composer with
@@ -1831,9 +1782,6 @@ struct ChatView: View {
                 .frame(width: 3, height: 34)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 7) {
-//                    Image(systemName: "arrowshape.turn.up.left.fill")
-//                        .font(.caption.weight(.semibold))
-//                        .foregroundStyle(.tint)
                     Text(
                         "Ответ: \(message.senderDisplayName ?? model.displayName(for: message.senderJID))"
                     )
@@ -1856,17 +1804,6 @@ struct ChatView: View {
             .accessibilityLabel("Отменить ответ")
         }
         .accessibilityIdentifier("reply-banner")
-        //        .padding(.horizontal, 12)
-        //        .padding(.vertical, 8)
-        //        .background(
-        //            .thinMaterial,
-        //            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
-        //        )
-        //        .overlay {
-        //            RoundedRectangle(cornerRadius: 14, style: .continuous)
-        //                .stroke(Color.secondary.opacity(0.16), lineWidth: 0.75)
-        //        }
-        //        .padding(.horizontal, 10)
     }
 
     private func perform(_ action: MessageDestructiveAction) {
@@ -1908,15 +1845,10 @@ struct ChatView: View {
                 .font(.system(size: 20, weight: .semibold))
                 .foregroundStyle(.primary)
                 .frame(width: 46, height: 46)
-                .background(.ultraThinMaterial, in: Circle())
-                .overlay {
-                    Circle()
-                        .stroke(Color.accentColor.opacity(0.42), lineWidth: 1)
-                }
-                .shadow(color: .black.opacity(0.16), radius: 10, y: 4)
         }
         .buttonStyle(.plain)
         .contentShape(Circle())
+        .glassEffect()
         .accessibilityLabel("Перейти к последнему сообщению")
         .help("Перейти в конец истории")
     }
@@ -2211,24 +2143,6 @@ private struct TelegramRecordButton: View {
 
     var body: some View {
         ZStack {
-            Circle()
-                .fill(.ultraThinMaterial)
-                .overlay {
-                    Circle()
-                        .fill(
-                            isRecording ? Color.red.opacity(0.13) : Color.clear
-                        )
-                }
-                .overlay(
-                    Circle()
-                        .stroke(
-                            isRecording
-                                ? Color.red.opacity(0.42)
-                                : Color.secondary.opacity(0.2),
-                            lineWidth: 0.75
-                        )
-                )
-
             if isFinalizing {
                 ProgressView()
                     .controlSize(.small)
@@ -2242,13 +2156,8 @@ private struct TelegramRecordButton: View {
         }
         .frame(width: 42, height: 42)
         .scaleEffect(isRecording && !isLocked ? 1.34 : (isPressing ? 1.08 : 1))
-        .shadow(
-            color: isRecording
-                ? Color.black.opacity(0.2) : Color.black.opacity(0.075),
-            radius: 8,
-            y: isRecording ? 4 : 2
-        )
         .contentShape(Circle())
+        .glassEffect()
         #if os(iOS)
             .overlay {
                 ComposerRecordTouchSurface(

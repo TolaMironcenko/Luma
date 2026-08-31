@@ -53,10 +53,11 @@ private struct SearchField: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
-        .background(
-            Color.secondary.opacity(0.14),
-            in: RoundedRectangle(cornerRadius: 10)
-        )
+        .glassEffect()
+        //        .background(
+        //            Color.secondary.opacity(0.14),
+        //            in: RoundedRectangle(cornerRadius: 10)
+        //        )
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
     }
@@ -85,16 +86,16 @@ private struct SearchField: View {
 
             var icon: String {
                 switch self {
-                case .contacts: return "person.2"
-                case .calls: return "phone"
-                case .chats: return "bubble.left.and.bubble.right"
-                case .settings: return "gearshape"
+                case .contacts: return "person.circle.fill"
+                case .calls: return "phone.fill"
+                case .chats: return "bubble.left.and.bubble.right.fill"
+                case .settings: return "gearshape.fill"
                 }
             }
 
             var selectedIcon: String {
                 switch self {
-                case .contacts: return "person.2.fill"
+                case .contacts: return "person.circle.fill"
                 case .calls: return "phone.fill"
                 case .chats: return "bubble.left.and.bubble.right.fill"
                 case .settings: return "gearshape.fill"
@@ -169,12 +170,12 @@ private struct ChatsTab: View {
             }
             .navigationTitle("")
             #if os(iOS)
-            .navigationBarTitleDisplayMode(.inline)
-            .searchable(
-                text: $searchText,
-                placement: .navigationBarDrawer(displayMode: .always),
-                prompt: "Поиск чатов"
-            )
+                .navigationBarTitleDisplayMode(.inline)
+                .searchable(
+                    text: $searchText,
+                    placement: .navigationBarDrawer(displayMode: .always),
+                    prompt: "Поиск чатов"
+                )
             #endif
             .toolbar {
                 ToolbarItem(placement: .principal) {
@@ -319,12 +320,12 @@ private struct ContactsTab: View {
             }
             .navigationTitle("")
             #if os(iOS)
-            .navigationBarTitleDisplayMode(.inline)
-            .searchable(
-                text: $searchText,
-                placement: .navigationBarDrawer(displayMode: .always),
-                prompt: "Поиск контактов"
-            )
+                .navigationBarTitleDisplayMode(.inline)
+                .searchable(
+                    text: $searchText,
+                    placement: .navigationBarDrawer(displayMode: .always),
+                    prompt: "Поиск контактов"
+                )
             #endif
             .toolbar {
                 ToolbarItem(placement: .principal) {
@@ -504,7 +505,7 @@ private struct CallsTab: View {
             }
             .navigationTitle("")
             #if os(iOS)
-            .navigationBarTitleDisplayMode(.inline)
+                .navigationBarTitleDisplayMode(.inline)
             #endif
             .toolbar {
                 ToolbarItem(placement: .principal) {
@@ -596,9 +597,9 @@ private struct ContactRow: View {
             }
 
             Spacer(minLength: 8)
-//            Image(systemName: "chevron.right")
-//                .font(.caption.bold())
-//                .foregroundStyle(.tertiary)
+            //            Image(systemName: "chevron.right")
+            //                .font(.caption.bold())
+            //                .foregroundStyle(.tertiary)
         }
         .contentShape(Rectangle())
     }
@@ -614,9 +615,9 @@ private struct ContactRow: View {
 #if os(macOS)
     private struct MainSplitView: View {
         private enum Mode: String, CaseIterable, Identifiable {
-            case chats
             case contacts
             case calls
+            case chats
             case settings
 
             var id: String { rawValue }
@@ -632,10 +633,10 @@ private struct ContactRow: View {
 
             var icon: String {
                 switch self {
-                case .chats: return "bubble.left.and.bubble.right"
-                case .contacts: return "person.2"
-                case .calls: return "phone"
-                case .settings: return "gearshape"
+                case .chats: return "bubble.left.and.bubble.right.fill"
+                case .contacts: return "person.circle.fill"
+                case .calls: return "phone.fill"
+                case .settings: return "gearshape.fill"
                 }
             }
 
@@ -675,30 +676,34 @@ private struct ContactRow: View {
                         ideal: 290,
                         max: 380
                     )
+                    .toolbar {
+                        ToolbarItem(placement: .principal) {
+                            Text(mode.title)
+                                .font(.headline)
+                        }
+                        if mode != .settings {
+                            ToolbarItemGroup(placement: .primaryAction) {
+                                Button {
+                                    showingNewGroup = true
+                                } label: {
+                                    Image(systemName: "person.3.fill")
+                                }
+                                .accessibilityLabel("Новый групповой чат")
+                                .help("Новый групповой чат")
+                                Button {
+                                    showingNewChat = true
+                                } label: {
+                                    Image(systemName: "square.and.pencil")
+                                }
+                                .accessibilityLabel("Новый личный чат")
+                                .help("Новый личный чат")
+                            }
+                        }
+                    }
             } detail: {
                 detailPane
             }
             .frame(minWidth: 840, minHeight: 560)
-            .toolbar {
-                if mode != .settings {
-                    ToolbarItemGroup(placement: .primaryAction) {
-                        Button {
-                            showingNewGroup = true
-                        } label: {
-                            Image(systemName: "person.3.fill")
-                        }
-                        .accessibilityLabel("Новый групповой чат")
-                        .help("Новый групповой чат")
-                        Button {
-                            showingNewChat = true
-                        } label: {
-                            Image(systemName: "square.and.pencil")
-                        }
-                        .accessibilityLabel("Новый личный чат")
-                        .help("Новый личный чат")
-                    }
-                }
-            }
             .sheet(isPresented: $showingNewChat) {
                 NewChatView(model: model)
             }
@@ -733,40 +738,41 @@ private struct ContactRow: View {
 
         private var sidebar: some View {
             VStack(spacing: 0) {
-                HStack(spacing: 8) {
-                    Menu {
-                        ForEach(Mode.allCases) { item in
-                            Button {
-                                switchMode(item)
-                            } label: {
-                                Label(item.title, systemImage: item.icon)
-                            }
-                        }
-                    } label: {
-                        Image(systemName: "line.3.horizontal")
-                            .font(.system(size: 13, weight: .semibold))
-                            .frame(width: 28, height: 28)
-                            .contentShape(Rectangle())
-                    }
-                    .menuStyle(.borderlessButton)
-                    .fixedSize()
-                    .help("Меню")
-                    .accessibilityLabel("Меню")
-
-                    if mode != .settings {
-                        SearchField(
-                            text: $searchText,
-                            prompt: mode.searchPrompt
-                        )
-                    }
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
-
                 if mode != .settings {
                     ConnectionBanner(model: model, text: "")
-                    sidebarList
+                    SearchField(
+                        text: $searchText,
+                        prompt: mode.searchPrompt
+                    )
                 }
+                sidebarList
+            }
+            .safeAreaInset(edge: .bottom) {
+                HStack(spacing: 0) {
+                    ForEach(Mode.allCases) { item in
+                        Button {
+                            withAnimation(.easeInOut) {
+                                switchMode(item)
+                            }
+                        } label: {
+                            VStack {
+                                Image(systemName: item.icon)
+                                    .font(.largeTitle)
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                        .foregroundColor(
+                            mode == item ? .accentColor : .secondary
+                        )
+                        .padding(.vertical, 8)
+                        .buttonStyle(.plain)
+                    }
+                }
+                .animation(
+                    .spring(response: 0.35, dampingFraction: 0.82),
+                    value: mode
+                )
+                .glassEffect(in: .rect(cornerRadius: 20))
             }
         }
 
@@ -780,7 +786,10 @@ private struct ContactRow: View {
                 case .calls:
                     callRows
                 case .settings:
-                    EmptyView()
+                    //                    NavigationStack {
+                    SettingsView(model: model, presentedAsTab: true)
+                //                    }
+                //                    EmptyView()
                 }
             }
             .listStyle(.sidebar)
@@ -837,7 +846,7 @@ private struct ContactRow: View {
         @ViewBuilder
         private var contactRows: some View {
             if !filteredRoster.isEmpty {
-                Section("Люди из roster") {
+                Section {
                     ForEach(filteredRoster) { conversation in
                         ContactRow(
                             conversation: conversation,
@@ -848,7 +857,7 @@ private struct ContactRow: View {
                 }
             }
             if !filteredGroups.isEmpty {
-                Section("Групповые чаты") {
+                Section {
                     ForEach(filteredGroups) { conversation in
                         ContactRow(
                             conversation: conversation,
@@ -888,9 +897,11 @@ private struct ContactRow: View {
         @ViewBuilder
         private var detailPane: some View {
             if mode == .settings {
-                NavigationStack {
-                    SettingsView(model: model, presentedAsTab: true)
-                }
+                ContentUnavailableView(
+                    emptyTitle,
+                    systemImage: "gearshape.fill",
+                    description: Text("Выберите пункт из списка слева.")
+                )
             } else if let conversation = selectedConversation
                 ?? defaultConversation
             {

@@ -33,9 +33,9 @@ struct AppLockView: View {
                 SecureField("Пароль", text: $passcode)
                     .focused($isFocused)
                     .textContentType(.password)
-                #if os(iOS)
-                    .textInputAutocapitalization(.never)
-                #endif
+                    #if os(iOS)
+                        .textInputAutocapitalization(.never)
+                    #endif
                     .autocorrectionDisabled()
                     .textFieldStyle(.roundedBorder)
                     .multilineTextAlignment(.center)
@@ -57,36 +57,44 @@ struct AppLockView: View {
                 .buttonStyle(.borderedProminent)
                 .disabled(passcode.isEmpty)
 
-                if model.biometricUnlockAvailable, model.appLockBiometricIsEnabled {
+                if model.biometricUnlockAvailable,
+                    model.appLockBiometricIsEnabled
+                {
                     Button {
                         Task { await biometricUnlock() }
                     } label: {
                         Label(
                             "Войти по \(model.biometricUnlockName)",
-                            systemImage: model.biometricUnlockName == "Face ID" ? "faceid" : "touchid"
+                            systemImage: model.biometricUnlockName == "Face ID"
+                                ? "faceid" : "touchid"
                         )
                         .foregroundStyle(.white)
                     }
                 }
             }
             .padding(28)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+            .background(
+                .regularMaterial,
+                in: RoundedRectangle(cornerRadius: 28, style: .continuous)
+            )
             .padding(24)
         }
         .onAppear {
             isFocused = true
         }
-#if os(iOS)
-        .task {
-            // Auto-prompt biometrics once when the lock screen appears. iOS
-            // only: on macOS the system Touch ID dialog blocks the window
-            // and freezes the lock screen.
-            guard model.biometricUnlockAvailable, model.appLockBiometricIsEnabled else {
-                return
+        #if os(iOS)
+            .task {
+                // Auto-prompt biometrics once when the lock screen appears. iOS
+                // only: on macOS the system Touch ID dialog blocks the window
+                // and freezes the lock screen.
+                guard model.biometricUnlockAvailable,
+                    model.appLockBiometricIsEnabled
+                else {
+                    return
+                }
+                await biometricUnlock()
             }
-            await biometricUnlock()
-        }
-#endif
+        #endif
     }
 
     private func submit() {
@@ -139,29 +147,25 @@ struct AppLockPasscodeSheet: View {
     @State private var errorText: String?
 
     var body: some View {
-        NavigationStack {
-            Form {
-                if needsOldPasscode {
-                    Section("Текущий пароль") {
-                        SecureField("Текущий пароль", text: $oldPasscode)
-                            .textContentType(.password)
+        #if os(iOS)
+            NavigationStack {
+                Form {
+                    formcontent()
+                }
+                .navigationTitle(navigationTitle)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Отмена") { dismiss() }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Готово", action: submit)
+                            .disabled(!canSubmit)
                     }
                 }
-                Section(title) {
-                    SecureField(fieldLabel, text: $passcode)
-                        .textContentType(.password)
-                    if needsRepeatedPasscode {
-                        SecureField("Повторите пароль", text: $repeatedPasscode)
-                            .textContentType(.password)
-                    }
-                }
-                if let errorText {
-                    Section {
-                        Text(errorText)
-                            .font(.caption)
-                            .foregroundStyle(.red)
-                    }
-                }
+            }
+        #else
+            List {
+                formcontent()
             }
             .navigationTitle(navigationTitle)
             .toolbar {
@@ -173,27 +177,43 @@ struct AppLockPasscodeSheet: View {
                         .disabled(!canSubmit)
                 }
             }
-        }
-#if os(macOS)
-        .frame(minWidth: 420, minHeight: 320)
-#endif
+            .frame(minWidth: 420, minHeight: 320)
+        #endif
     }
 
-    private var needsOldPasscode: Bool {
+    @ViewBuilder
+    private func formcontent() -> some View {
         switch mode {
-        case .change, .verify:
-            return true
         case .setup:
-            return false
-        }
-    }
-
-    private var needsRepeatedPasscode: Bool {
-        switch mode {
-        case .setup, .change:
-            return true
+            Section(title) {
+                SecureField(fieldLabel, text: $passcode)
+                    .textContentType(.password)
+                SecureField("Повторите пароль", text: $repeatedPasscode)
+                    .textContentType(.password)
+            }
         case .verify:
-            return false
+            Section("Текущий пароль") {
+                SecureField("Текущий пароль", text: $oldPasscode)
+                    .textContentType(.password)
+            }
+        case .change:
+            Section("Текущий пароль") {
+                SecureField("Текущий пароль", text: $oldPasscode)
+                    .textContentType(.password)
+            }
+            Section(title) {
+                SecureField(fieldLabel, text: $passcode)
+                    .textContentType(.password)
+                SecureField("Повторите пароль", text: $repeatedPasscode)
+                    .textContentType(.password)
+            }
+        }
+        if let errorText {
+            Section {
+                Text(errorText)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
         }
     }
 
@@ -212,14 +232,16 @@ struct AppLockPasscodeSheet: View {
         case .verify(let action):
             switch action {
             case .disableLock: return "Выключить блокировку"
-            case .enableBiometrics, .disableBiometrics: return "Подтвердите пароль"
+            case .enableBiometrics, .disableBiometrics:
+                return "Подтвердите пароль"
             }
         }
     }
 
     private var fieldLabel: String {
         switch mode {
-        case .setup, .change: return "Пароль (минимум \(AppLockPolicy.minimumLength) символа)"
+        case .setup, .change:
+            return "Пароль (минимум \(AppLockPolicy.minimumLength) символа)"
         case .verify: return "Пароль"
         }
     }
@@ -229,7 +251,8 @@ struct AppLockPasscodeSheet: View {
         case .setup:
             return !passcode.isEmpty && !repeatedPasscode.isEmpty
         case .change:
-            return !oldPasscode.isEmpty && !passcode.isEmpty && !repeatedPasscode.isEmpty
+            return !oldPasscode.isEmpty && !passcode.isEmpty
+                && !repeatedPasscode.isEmpty
         case .verify:
             return !oldPasscode.isEmpty
         }
@@ -240,7 +263,8 @@ struct AppLockPasscodeSheet: View {
         switch mode {
         case .setup:
             guard AppLockPolicy.isValid(passcode) else {
-                errorText = "Пароль слишком короткий: минимум \(AppLockPolicy.minimumLength) символа."
+                errorText =
+                    "Пароль слишком короткий: минимум \(AppLockPolicy.minimumLength) символа."
                 return
             }
             guard passcode == repeatedPasscode else {
@@ -251,11 +275,13 @@ struct AppLockPasscodeSheet: View {
             if model.enableAppLock(passcode: passcode) {
                 dismiss()
             } else {
-                errorText = model.errorMessage ?? "Не удалось включить блокировку."
+                errorText =
+                    model.errorMessage ?? "Не удалось включить блокировку."
             }
         case .change:
             guard AppLockPolicy.isValid(passcode) else {
-                errorText = "Пароль слишком короткий: минимум \(AppLockPolicy.minimumLength) символа."
+                errorText =
+                    "Пароль слишком короткий: минимум \(AppLockPolicy.minimumLength) символа."
                 return
             }
             guard passcode == repeatedPasscode else {
@@ -279,14 +305,16 @@ struct AppLockPasscodeSheet: View {
                     oldPasscode = ""
                 }
             case .enableBiometrics:
-                if model.setAppLockBiometricUnlock(true, passcode: oldPasscode) {
+                if model.setAppLockBiometricUnlock(true, passcode: oldPasscode)
+                {
                     dismiss()
                 } else {
                     errorText = "Неверный пароль."
                     oldPasscode = ""
                 }
             case .disableBiometrics:
-                if model.setAppLockBiometricUnlock(false, passcode: oldPasscode) {
+                if model.setAppLockBiometricUnlock(false, passcode: oldPasscode)
+                {
                     dismiss()
                 } else {
                     errorText = "Неверный пароль."
@@ -296,4 +324,3 @@ struct AppLockPasscodeSheet: View {
         }
     }
 }
-

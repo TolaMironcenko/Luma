@@ -135,6 +135,7 @@ struct LoginView: View {
                     )
                     .textFieldStyle(.roundedBorder)
                     Toggle("Direct TLS", isOn: $directTLS)
+                        .toggleStyle(.switch)
                     Text(
                         "Без ручного адреса Luma использует DNS SRV и автоматически выбирает STARTTLS/direct TLS."
                     )
@@ -158,7 +159,7 @@ struct LoginView: View {
                 .frame(maxWidth: .infinity)
                 .frame(height: 34)
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.glassProminent)
             .controlSize(.large)
             .disabled(model.isAuthenticating)
 

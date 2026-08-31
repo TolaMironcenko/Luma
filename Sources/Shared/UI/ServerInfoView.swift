@@ -8,76 +8,9 @@ struct ServerInfoView: View {
     @State private var isLoading = false
 
     var body: some View {
+        #if os(iOS)
         Form {
-            if let info = model.serverInformation {
-                Section("Это статистика вашего соединения.") {
-                    statisticsEntries(info)
-                } //header: {
-//                    Text("Это статистика вашего соединения.")
-//                }
-
-                Section {
-                    softwareEntry(info)
-                } header: {
-                    Text("Это программное обеспечение, работающее на вашем сервере.")
-                }
-
-                Section {
-                    connectionRows()
-                } header: {
-                    Text("Параметры подключения к вашему серверу.")
-                }
-
-                Section {
-                    ForEach(info.capabilities) { capability in
-                        entry(
-                            title: capability.title,
-                            detail: capability.detail,
-                            status: capability.status
-                        )
-                    }
-                } header: {
-                    Text("Современные возможности XMPP, обнаруженные на вашем сервере после входа.")
-                }
-
-                Section {
-                    mucEntries(info)
-                } header: {
-                    Text("MUC-серверы, обнаруженные на вашем сервере.")
-                }
-
-                Section {
-                    stunTurnEntries(info)
-                } header: {
-                    Text("STUN и TURN сервисы, объявленные вашим сервером.")
-                }
-
-                Section {
-                    saslEntries(info)
-                } header: {
-                    Text("Методы аутентификации SASL, которые поддерживает ваш сервер.")
-                }
-            } else if isLoading {
-                Section {
-                    HStack(spacing: 12) {
-                        ProgressView()
-                        Text("Загрузка информации о сервере…")
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            } else {
-                Section {
-                    ContentUnavailableView(
-                        "Нет данных о сервере",
-                        systemImage: "server.rack",
-                        description: Text(
-                            model.connectionStatus == .connected
-                                ? "Сервер не ответил на запрос. Попробуйте обновить."
-                                : "Подключитесь к серверу, чтобы увидеть его возможности."
-                        )
-                    )
-                }
-            }
+            infocontent()
         }
         .navigationTitle(model.account?.domain ?? "Сервер")
         .toolbar {
@@ -91,12 +24,79 @@ struct ServerInfoView: View {
             }
         }
         .task { await load() }
-#if os(macOS)
+        .listStyle(.grouped)
+        #else
+        List {
+            infocontent()
+        }
+        .navigationTitle(model.account?.domain ?? "Сервер")
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    Task { await load() }
+                } label: {
+                    Label("Обновить", systemImage: "arrow.clockwise")
+                }
+                .disabled(isLoading)
+            }
+        }
+        .task { await load() }
         .listStyle(.inset)
         .frame(minWidth: 480, minHeight: 420)
-#else
-        .listStyle(.grouped)
-#endif
+        #endif
+    }
+    
+    @ViewBuilder
+    private func infocontent() -> some View {
+        if let info = model.serverInformation {
+            Section("Это статистика вашего соединения.") {
+                statisticsEntries(info)
+            }
+            Section("Это программное обеспечение, работающее на вашем сервере.") {
+                softwareEntry(info)
+            }
+            Section("Параметры подключения к вашему серверу.") {
+                connectionRows()
+            }
+            Section("Современные возможности XMPP, обнаруженные на вашем сервере после входа.") {
+                ForEach(info.capabilities) { capability in
+                    entry(
+                        title: capability.title,
+                        detail: capability.detail,
+                        status: capability.status
+                    )
+                }
+            }
+            Section("MUC-серверы, обнаруженные на вашем сервере.") {
+                mucEntries(info)
+            }
+            Section("STUN и TURN сервисы, объявленные вашим сервером.") {
+                stunTurnEntries(info)
+            }
+            Section("Методы аутентификации SASL, которые поддерживает ваш сервер.") {
+                saslEntries(info)
+            }
+        } else if isLoading {
+            Section {
+                HStack(spacing: 12) {
+                    ProgressView()
+                    Text("Загрузка информации о сервере…")
+                        .foregroundStyle(.secondary)
+                }
+            }
+        } else {
+            Section {
+                ContentUnavailableView(
+                    "Нет данных о сервере",
+                    systemImage: "server.rack",
+                    description: Text(
+                        model.connectionStatus == .connected
+                            ? "Сервер не ответил на запрос. Попробуйте обновить."
+                            : "Подключитесь к серверу, чтобы увидеть его возможности."
+                    )
+                )
+            }
+        }
     }
 
     // MARK: - Sections
