@@ -168,12 +168,14 @@ private struct ChatsTab: View {
                 chatList
             }
             .navigationTitle("")
+            #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             .searchable(
                 text: $searchText,
                 placement: .navigationBarDrawer(displayMode: .always),
                 prompt: "Поиск чатов"
             )
+            #endif
             .toolbar {
                 ToolbarItem(placement: .principal) {
                     ConnectionBanner(model: model, text: "Чаты")
@@ -316,12 +318,14 @@ private struct ContactsTab: View {
                 contactsList
             }
             .navigationTitle("")
+            #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             .searchable(
                 text: $searchText,
                 placement: .navigationBarDrawer(displayMode: .always),
                 prompt: "Поиск контактов"
             )
+            #endif
             .toolbar {
                 ToolbarItem(placement: .principal) {
                     ConnectionBanner(model: model, text: "Контакты")
@@ -499,7 +503,9 @@ private struct CallsTab: View {
                 }
             }
             .navigationTitle("")
+            #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
+            #endif
             .toolbar {
                 ToolbarItem(placement: .principal) {
                     Text("Звонки")
@@ -758,7 +764,7 @@ private struct ContactRow: View {
                 .padding(.vertical, 8)
 
                 if mode != .settings {
-                    ConnectionBanner(model: model)
+                    ConnectionBanner(model: model, text: "")
                     sidebarList
                 }
             }
