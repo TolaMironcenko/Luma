@@ -13,6 +13,9 @@ struct NewChatView: View {
                 Section("Контакт") {
                     TextField("user@example.org", text: $jid)
                         .disableAutocorrection(true)
+                    #if os(iOS)
+                        .keyboardType(.emailAddress)
+                    #endif
                     TextField("Имя (необязательно)", text: $name)
                 }
                 Section {

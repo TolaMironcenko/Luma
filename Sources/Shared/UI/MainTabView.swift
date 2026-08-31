@@ -11,11 +11,11 @@ struct MainTabView: View {
     @ObservedObject var model: AppModel
 
     var body: some View {
-#if os(macOS)
-        MainSplitView(model: model)
-#else
-        MainTabBarView(model: model)
-#endif
+        #if os(macOS)
+            MainSplitView(model: model)
+        #else
+            MainTabBarView(model: model)
+        #endif
     }
 }
 
@@ -36,9 +36,9 @@ private struct SearchField: View {
             TextField(prompt, text: $text)
                 .textFieldStyle(.plain)
                 .autocorrectionDisabled()
-#if os(iOS)
-                .textInputAutocapitalization(.never)
-#endif
+                #if os(iOS)
+                    .textInputAutocapitalization(.never)
+                #endif
             if !text.isEmpty {
                 Button {
                     text = ""
@@ -53,7 +53,10 @@ private struct SearchField: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
-        .background(Color.secondary.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
+        .background(
+            Color.secondary.opacity(0.14),
+            in: RoundedRectangle(cornerRadius: 10)
+        )
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
     }
@@ -62,79 +65,80 @@ private struct SearchField: View {
 // MARK: - iOS: bottom tab bar
 
 #if os(iOS)
-private struct MainTabBarView: View {
-    enum Tab: String, CaseIterable, Identifiable {
-        case contacts
-        case calls
-        case chats
-        case settings
+    private struct MainTabBarView: View {
+        enum Tab: String, CaseIterable, Identifiable {
+            case contacts
+            case calls
+            case chats
+            case settings
 
-        var id: String { rawValue }
+            var id: String { rawValue }
 
-        var title: String {
-            switch self {
-            case .contacts: return "Контакты"
-            case .calls: return "Звонки"
-            case .chats: return "Чаты"
-            case .settings: return "Настройки"
+            var title: String {
+                switch self {
+                case .contacts: return "Контакты"
+                case .calls: return "Звонки"
+                case .chats: return "Чаты"
+                case .settings: return "Настройки"
+                }
+            }
+
+            var icon: String {
+                switch self {
+                case .contacts: return "person.2"
+                case .calls: return "phone"
+                case .chats: return "bubble.left.and.bubble.right"
+                case .settings: return "gearshape"
+                }
+            }
+
+            var selectedIcon: String {
+                switch self {
+                case .contacts: return "person.2.fill"
+                case .calls: return "phone.fill"
+                case .chats: return "bubble.left.and.bubble.right.fill"
+                case .settings: return "gearshape.fill"
+                }
             }
         }
 
-        var icon: String {
-            switch self {
-            case .contacts: return "person.2"
-            case .calls: return "phone"
-            case .chats: return "bubble.left.and.bubble.right"
-            case .settings: return "gearshape"
+        @ObservedObject var model: AppModel
+        @State private var selectedTab: Tab = .chats
+
+        var body: some View {
+            // Native TabView: on iOS 26 it renders the system floating
+            // translucent tab bar (Liquid Glass).
+            TabView(selection: $selectedTab) {
+                ForEach(Tab.allCases) { tab in
+                    tabContent(for: tab)
+                        .tabItem {
+                            Label(
+                                tab.title,
+                                systemImage: selectedTab == tab
+                                    ? tab.selectedIcon : tab.icon
+                            )
+                        }
+                        .tag(tab)
+                }
             }
         }
 
-        var selectedIcon: String {
-            switch self {
-            case .contacts: return "person.2.fill"
-            case .calls: return "phone.fill"
-            case .chats: return "bubble.left.and.bubble.right.fill"
-            case .settings: return "gearshape.fill"
+        @ViewBuilder
+        private func tabContent(for tab: Tab) -> some View {
+            switch tab {
+            case .contacts:
+                ContactsTab(model: model)
+            case .calls:
+                CallsTab(model: model)
+            case .chats:
+                ChatsTab(model: model)
+            case .settings:
+                NavigationStack {
+                    SettingsView(model: model, presentedAsTab: true)
+                }
             }
         }
     }
-
-    @ObservedObject var model: AppModel
-    @State private var selectedTab: Tab = .chats
-
-    var body: some View {
-        // Native TabView: on iOS 26 it renders the system floating
-        // translucent tab bar (Liquid Glass).
-        TabView(selection: $selectedTab) {
-            ForEach(Tab.allCases) { tab in
-                tabContent(for: tab)
-                    .tabItem {
-                        Label(
-                            tab.title,
-                            systemImage: selectedTab == tab ? tab.selectedIcon : tab.icon
-                        )
-                    }
-                    .tag(tab)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func tabContent(for tab: Tab) -> some View {
-        switch tab {
-        case .contacts:
-            ContactsTab(model: model)
-        case .calls:
-            CallsTab(model: model)
-        case .chats:
-            ChatsTab(model: model)
-        case .settings:
-            NavigationStack {
-                SettingsView(model: model, presentedAsTab: true)
-            }
-        }
-    }
-}
 #endif
 
 // MARK: - Chats
@@ -145,6 +149,7 @@ private struct ChatsTab: View {
     @State private var showingNewChat = false
     @State private var showingNewGroup = false
     @State private var pendingGroupDeletion: Conversation?
+    @FocusState private var searchFocused: Bool
 
     /// SwiftData-backed chat list. The query orders by last activity;
     /// `filteredConversations` applies the pinned-first ordering that
@@ -152,7 +157,7 @@ private struct ChatsTab: View {
     /// so pinning cannot be a `SortDescriptor`).
     @Query(
         sort: [
-            SortDescriptor(\Conversation.lastActivity, order: .reverse),
+            SortDescriptor(\Conversation.lastActivity, order: .reverse)
         ]
     )
     private var conversations: [Conversation]
@@ -160,19 +165,30 @@ private struct ChatsTab: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                SearchField(text: $searchText, prompt: "Поиск чатов")
-                ConnectionBanner(model: model)
                 chatList
             }
-            .navigationTitle("Чаты")
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            .searchable(
+                text: $searchText,
+                placement: .navigationBarDrawer(displayMode: .always),
+                prompt: "Поиск чатов"
+            )
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    ConnectionBanner(model: model, text: "Чаты")
+                }
                 ToolbarItemGroup(placement: .primaryAction) {
-                    Button { showingNewGroup = true } label: {
+                    Button {
+                        showingNewGroup = true
+                    } label: {
                         Image(systemName: "person.3.fill")
                     }
                     .accessibilityLabel("Новый групповой чат")
                     .help("Новый групповой чат")
-                    Button { showingNewChat = true } label: {
+                    Button {
+                        showingNewChat = true
+                    } label: {
                         Image(systemName: "square.and.pencil")
                     }
                     .accessibilityLabel("Новый личный чат")
@@ -200,13 +216,18 @@ private struct ChatsTab: View {
                 }
                 Button("Отмена", role: .cancel) { pendingGroupDeletion = nil }
             } message: {
-                Text("Чат и его история будут удалены с этого устройства. Luma выйдет из комнаты, если вы в ней.")
+                Text(
+                    "Чат и его история будут удалены с этого устройства. Luma выйдет из комнаты, если вы в ней."
+                )
             }
         }
+
     }
 
     private var filteredConversations: [Conversation] {
-        let source = searchText.isEmpty ? conversations : conversations.filter(matchesSearch)
+        let source =
+            searchText.isEmpty
+            ? conversations : conversations.filter(matchesSearch)
         return source.sorted(by: conversationSort)
     }
 
@@ -216,15 +237,21 @@ private struct ChatsTab: View {
                 NavigationLink {
                     ChatView(model: model, conversation: conversation)
                         .id(conversation.jid)
-                        .onAppear { model.selectConversation(id: conversation.jid) }
+                        .onAppear {
+                            model.selectConversation(id: conversation.jid)
+                        }
                 } label: {
                     ConversationRow(
                         conversation: conversation,
                         imageData: model.avatarData(for: conversation.jid),
-                        isEncrypted: model.encryptionEnabled(for: conversation.jid)
+                        isEncrypted: model.encryptionEnabled(
+                            for: conversation.jid
+                        )
                     )
                 }
-                .listRowInsets(EdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 12))
+                .listRowInsets(
+                    EdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 12)
+                )
                 .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                     if conversation.isGroup {
                         Button(role: .destructive) {
@@ -241,7 +268,8 @@ private struct ChatsTab: View {
             if filteredConversations.isEmpty {
                 ContentUnavailableView(
                     searchText.isEmpty ? "Нет чатов" : "Ничего не найдено",
-                    systemImage: searchText.isEmpty ? "bubble.left" : "magnifyingglass",
+                    systemImage: searchText.isEmpty
+                        ? "bubble.left" : "magnifyingglass",
                     description: Text(
                         searchText.isEmpty
                             ? "Создайте личный или групповой чат."
@@ -252,9 +280,13 @@ private struct ChatsTab: View {
         }
     }
 
-    private func conversationSort(_ lhs: Conversation, _ rhs: Conversation) -> Bool {
+    private func conversationSort(_ lhs: Conversation, _ rhs: Conversation)
+        -> Bool
+    {
         if lhs.isPinned != rhs.isPinned { return lhs.isPinned }
-        if lhs.lastActivity != rhs.lastActivity { return lhs.lastActivity > rhs.lastActivity }
+        if lhs.lastActivity != rhs.lastActivity {
+            return lhs.lastActivity > rhs.lastActivity
+        }
         return lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName)
             == .orderedAscending
     }
@@ -273,7 +305,7 @@ private struct ContactsTab: View {
 
     @Query(
         sort: [
-            SortDescriptor(\Conversation.lastActivity, order: .reverse),
+            SortDescriptor(\Conversation.lastActivity, order: .reverse)
         ]
     )
     private var conversations: [Conversation]
@@ -281,11 +313,20 @@ private struct ContactsTab: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                SearchField(text: $searchText, prompt: "Поиск контактов")
-                ConnectionBanner(model: model)
                 contactsList
             }
-            .navigationTitle("Контакты")
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            .searchable(
+                text: $searchText,
+                placement: .navigationBarDrawer(displayMode: .always),
+                prompt: "Поиск контактов"
+            )
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    ConnectionBanner(model: model, text: "Контакты")
+                }
+            }
         }
     }
 
@@ -295,10 +336,15 @@ private struct ContactsTab: View {
                 Section {
                     ForEach(filteredRosterContacts) { conversation in
                         contactLink(conversation)
-                            .listRowInsets(EdgeInsets(top: 7, leading: 12, bottom: 7, trailing: 12))
+                            .listRowInsets(
+                                EdgeInsets(
+                                    top: 7,
+                                    leading: 12,
+                                    bottom: 7,
+                                    trailing: 12
+                                )
+                            )
                     }
-                } header: {
-                    Label("Люди из roster", systemImage: "person.2.fill")
                 }
             }
 
@@ -306,10 +352,15 @@ private struct ContactsTab: View {
                 Section {
                     ForEach(filteredGroupContacts) { conversation in
                         contactLink(conversation)
-                            .listRowInsets(EdgeInsets(top: 7, leading: 12, bottom: 7, trailing: 12))
+                            .listRowInsets(
+                                EdgeInsets(
+                                    top: 7,
+                                    leading: 12,
+                                    bottom: 7,
+                                    trailing: 12
+                                )
+                            )
                     }
-                } header: {
-                    Label("Групповые чаты", systemImage: "person.3.fill")
                 }
             }
         }
@@ -318,7 +369,8 @@ private struct ContactsTab: View {
             if filteredRosterContacts.isEmpty && filteredGroupContacts.isEmpty {
                 ContentUnavailableView(
                     searchText.isEmpty ? "Нет контактов" : "Ничего не найдено",
-                    systemImage: searchText.isEmpty ? "person.2" : "magnifyingglass",
+                    systemImage: searchText.isEmpty
+                        ? "person.2" : "magnifyingglass",
                     description: Text(contactListDescription),
                 )
             }
@@ -354,7 +406,8 @@ private struct ContactsTab: View {
     }
 
     private var hasStoredContacts: Bool {
-        !model.rosterContactJIDs.isEmpty || conversations.contains { $0.isGroup }
+        !model.rosterContactJIDs.isEmpty
+            || conversations.contains { $0.isGroup }
     }
 
     private var contactListDescription: String {
@@ -362,7 +415,8 @@ private struct ContactsTab: View {
             return "Попробуйте другой JID или имя."
         }
         if !hasStoredContacts, model.connectionStatus != .connected {
-            return "Подключитесь к серверу, чтобы загрузить roster Prosody и групповые комнаты."
+            return
+                "Подключитесь к серверу, чтобы загрузить roster Prosody и групповые комнаты."
         }
         return "Добавьте человека в roster или создайте групповой чат."
     }
@@ -373,7 +427,8 @@ private struct ContactsTab: View {
     }
 
     private func contactSort(_ lhs: Conversation, _ rhs: Conversation) -> Bool {
-        lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName) == .orderedAscending
+        lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName)
+            == .orderedAscending
     }
 }
 
@@ -389,7 +444,9 @@ private struct CallsTab: View {
                     ContentUnavailableView(
                         "Нет звонков",
                         systemImage: "phone",
-                        description: Text("История звонков появится здесь после первого вызова.")
+                        description: Text(
+                            "История звонков появится здесь после первого вызова."
+                        )
                     )
                 } else {
                     List(model.callHistoryMessages) { message in
@@ -397,22 +454,58 @@ private struct CallsTab: View {
                             $0.jid == message.conversationID
                         }) {
                             NavigationLink {
-                                ChatView(model: model, conversation: conversation)
-                                    .id(conversation.jid)
-                                    .onAppear { model.selectConversation(id: conversation.jid) }
+                                ChatView(
+                                    model: model,
+                                    conversation: conversation
+                                )
+                                .id(conversation.jid)
+                                .onAppear {
+                                    model.selectConversation(
+                                        id: conversation.jid
+                                    )
+                                }
                             } label: {
-                                CallHistoryRow(model: model, message: message, conversation: conversation)
+                                CallHistoryRow(
+                                    model: model,
+                                    message: message,
+                                    conversation: conversation
+                                )
                             }
-                            .listRowInsets(EdgeInsets(top: 7, leading: 12, bottom: 7, trailing: 12))
+                            .listRowInsets(
+                                EdgeInsets(
+                                    top: 7,
+                                    leading: 12,
+                                    bottom: 7,
+                                    trailing: 12
+                                )
+                            )
                         } else {
-                            CallHistoryRow(model: model, message: message, conversation: nil)
-                                .listRowInsets(EdgeInsets(top: 7, leading: 12, bottom: 7, trailing: 12))
+                            CallHistoryRow(
+                                model: model,
+                                message: message,
+                                conversation: nil
+                            )
+                            .listRowInsets(
+                                EdgeInsets(
+                                    top: 7,
+                                    leading: 12,
+                                    bottom: 7,
+                                    trailing: 12
+                                )
+                            )
                         }
                     }
                     .listStyle(.plain)
                 }
             }
-            .navigationTitle("Звонки")
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text("Звонки")
+                        .font(.headline)
+                }
+            }
         }
     }
 }
@@ -424,12 +517,18 @@ private struct CallHistoryRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: message.callHistory?.isVideo == true ? "video.fill" : "phone.fill")
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(message.direction == .incoming && message.callHistory?.outcome == .missed
-                    ? Color.red : Color.accentColor)
-                .frame(width: 34, height: 34)
-                .background(Color.secondary.opacity(0.12), in: Circle())
+            Image(
+                systemName: message.callHistory?.isVideo == true
+                    ? "video.fill" : "phone.fill"
+            )
+            .font(.system(size: 17, weight: .semibold))
+            .foregroundStyle(
+                message.direction == .incoming
+                    && message.callHistory?.outcome == .missed
+                    ? Color.red : Color.accentColor
+            )
+            .frame(width: 34, height: 34)
+            .background(Color.secondary.opacity(0.12), in: Circle())
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(conversation?.displayName ?? message.conversationID)
@@ -456,7 +555,11 @@ private struct ContactRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            AvatarView(conversation: conversation, imageData: imageData, size: 42)
+            AvatarView(
+                conversation: conversation,
+                imageData: imageData,
+                size: 42
+            )
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
@@ -487,9 +590,9 @@ private struct ContactRow: View {
             }
 
             Spacer(minLength: 8)
-            Image(systemName: "chevron.right")
-                .font(.caption.bold())
-                .foregroundStyle(.tertiary)
+//            Image(systemName: "chevron.right")
+//                .font(.caption.bold())
+//                .foregroundStyle(.tertiary)
         }
         .contentShape(Rectangle())
     }
@@ -503,350 +606,413 @@ private struct ContactRow: View {
 // MARK: - macOS: Telegram Desktop-style split view
 
 #if os(macOS)
-private struct MainSplitView: View {
-    private enum Mode: String, CaseIterable, Identifiable {
-        case chats
-        case contacts
-        case calls
-        case settings
+    private struct MainSplitView: View {
+        private enum Mode: String, CaseIterable, Identifiable {
+            case chats
+            case contacts
+            case calls
+            case settings
 
-        var id: String { rawValue }
+            var id: String { rawValue }
 
-        var title: String {
-            switch self {
-            case .chats: return "Чаты"
-            case .contacts: return "Контакты"
-            case .calls: return "Звонки"
+            var title: String {
+                switch self {
+                case .chats: return "Чаты"
+                case .contacts: return "Контакты"
+                case .calls: return "Звонки"
+                case .settings: return "Настройки"
+                }
+            }
+
+            var icon: String {
+                switch self {
+                case .chats: return "bubble.left.and.bubble.right"
+                case .contacts: return "person.2"
+                case .calls: return "phone"
+                case .settings: return "gearshape"
+                }
+            }
+
+            var searchPrompt: String {
+                switch self {
+                case .chats: return "Поиск чатов"
+                case .contacts: return "Поиск контактов"
+                case .calls: return "Поиск звонков"
+                case .settings: return "Поиск"
+                }
+            }
+        }
+
+        @ObservedObject var model: AppModel
+        @State private var mode: Mode = .chats
+        @State private var selectedJID: String?
+        @State private var searchText = ""
+        @State private var showingNewChat = false
+        @State private var showingNewGroup = false
+        @State private var pendingGroupDeletion: Conversation?
+
+        /// SwiftData-backed chat list; pinned-first ordering is applied in
+        /// `sortedChats` because `Bool` is not `Comparable` and cannot be a
+        /// `SortDescriptor`.
+        @Query(
+            sort: [
+                SortDescriptor(\Conversation.lastActivity, order: .reverse)
+            ]
+        )
+        private var conversations: [Conversation]
+
+        var body: some View {
+            NavigationSplitView {
+                sidebar
+                    .navigationSplitViewColumnWidth(
+                        min: 240,
+                        ideal: 290,
+                        max: 380
+                    )
+            } detail: {
+                detailPane
+            }
+            .frame(minWidth: 840, minHeight: 560)
+            .toolbar {
+                if mode != .settings {
+                    ToolbarItemGroup(placement: .primaryAction) {
+                        Button {
+                            showingNewGroup = true
+                        } label: {
+                            Image(systemName: "person.3.fill")
+                        }
+                        .accessibilityLabel("Новый групповой чат")
+                        .help("Новый групповой чат")
+                        Button {
+                            showingNewChat = true
+                        } label: {
+                            Image(systemName: "square.and.pencil")
+                        }
+                        .accessibilityLabel("Новый личный чат")
+                        .help("Новый личный чат")
+                    }
+                }
+            }
+            .sheet(isPresented: $showingNewChat) {
+                NewChatView(model: model)
+            }
+            .sheet(isPresented: $showingNewGroup) {
+                NewGroupView(model: model)
+            }
+            .alert(
+                "Удалить групповой чат?",
+                isPresented: Binding(
+                    get: { pendingGroupDeletion != nil },
+                    set: { if !$0 { pendingGroupDeletion = nil } }
+                )
+            ) {
+                Button("Удалить", role: .destructive) {
+                    if let pendingGroupDeletion {
+                        model.deleteGroupChat(jid: pendingGroupDeletion.jid)
+                    }
+                    pendingGroupDeletion = nil
+                }
+                Button("Отмена", role: .cancel) { pendingGroupDeletion = nil }
+            } message: {
+                Text(
+                    "Чат и его история будут удалены с этого устройства. Luma выйдет из комнаты, если вы в ней."
+                )
+            }
+            .onAppear {
+                ensureSelection()
+            }
+        }
+
+        // MARK: Sidebar
+
+        private var sidebar: some View {
+            VStack(spacing: 0) {
+                HStack(spacing: 8) {
+                    Menu {
+                        ForEach(Mode.allCases) { item in
+                            Button {
+                                switchMode(item)
+                            } label: {
+                                Label(item.title, systemImage: item.icon)
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "line.3.horizontal")
+                            .font(.system(size: 13, weight: .semibold))
+                            .frame(width: 28, height: 28)
+                            .contentShape(Rectangle())
+                    }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+                    .help("Меню")
+                    .accessibilityLabel("Меню")
+
+                    if mode != .settings {
+                        SearchField(
+                            text: $searchText,
+                            prompt: mode.searchPrompt
+                        )
+                    }
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+
+                if mode != .settings {
+                    ConnectionBanner(model: model)
+                    sidebarList
+                }
+            }
+        }
+
+        private var sidebarList: some View {
+            List(selection: $selectedJID) {
+                switch mode {
+                case .chats:
+                    chatRows
+                case .contacts:
+                    contactRows
+                case .calls:
+                    callRows
+                case .settings:
+                    EmptyView()
+                }
+            }
+            .listStyle(.sidebar)
+            .overlay {
+                if mode == .chats && filteredChats.isEmpty {
+                    ContentUnavailableView(
+                        searchText.isEmpty ? "Нет чатов" : "Ничего не найдено",
+                        systemImage: searchText.isEmpty
+                            ? "bubble.left" : "magnifyingglass",
+                        description: Text(
+                            searchText.isEmpty
+                                ? "Создайте личный или групповой чат."
+                                : "Попробуйте другой JID или имя."
+                        )
+                    )
+                }
+                if mode == .contacts && filteredRoster.isEmpty
+                    && filteredGroups.isEmpty
+                {
+                    ContentUnavailableView(
+                        searchText.isEmpty
+                            ? "Нет контактов" : "Ничего не найдено",
+                        systemImage: searchText.isEmpty
+                            ? "person.2" : "magnifyingglass",
+                        description: Text(
+                            searchText.isEmpty
+                                ? "Подключитесь к серверу, чтобы загрузить roster, или создайте групповой чат."
+                                : "Попробуйте другой JID или имя."
+                        )
+                    )
+                }
+            }
+        }
+
+        @ViewBuilder
+        private var chatRows: some View {
+            ForEach(filteredChats) { conversation in
+                ConversationRow(
+                    conversation: conversation,
+                    imageData: model.avatarData(for: conversation.jid),
+                    isEncrypted: model.encryptionEnabled(for: conversation.jid)
+                )
+                .tag(conversation.jid)
+                .contextMenu {
+                    if conversation.isGroup {
+                        Button("Удалить", role: .destructive) {
+                            pendingGroupDeletion = conversation
+                        }
+                    }
+                }
+            }
+        }
+
+        @ViewBuilder
+        private var contactRows: some View {
+            if !filteredRoster.isEmpty {
+                Section("Люди из roster") {
+                    ForEach(filteredRoster) { conversation in
+                        ContactRow(
+                            conversation: conversation,
+                            imageData: model.avatarData(for: conversation.jid)
+                        )
+                        .tag(conversation.jid)
+                    }
+                }
+            }
+            if !filteredGroups.isEmpty {
+                Section("Групповые чаты") {
+                    ForEach(filteredGroups) { conversation in
+                        ContactRow(
+                            conversation: conversation,
+                            imageData: model.avatarData(for: conversation.jid)
+                        )
+                        .tag(conversation.jid)
+                    }
+                }
+            }
+        }
+
+        @ViewBuilder
+        private var callRows: some View {
+            ForEach(filteredCalls) { message in
+                if let conversation = conversations.first(where: {
+                    $0.jid == message.conversationID
+                }) {
+                    CallHistoryRow(
+                        model: model,
+                        message: message,
+                        conversation: conversation
+                    )
+                    .tag(message.clientID)
+                } else {
+                    CallHistoryRow(
+                        model: model,
+                        message: message,
+                        conversation: nil
+                    )
+                    .tag(message.clientID)
+                }
+            }
+        }
+
+        // MARK: Detail pane
+
+        @ViewBuilder
+        private var detailPane: some View {
+            if mode == .settings {
+                NavigationStack {
+                    SettingsView(model: model, presentedAsTab: true)
+                }
+            } else if let conversation = selectedConversation
+                ?? defaultConversation
+            {
+                ChatView(model: model, conversation: conversation)
+                    .id(conversation.jid)
+                    .onAppear {
+                        model.selectConversation(id: conversation.jid)
+                    }
+            } else {
+                ContentUnavailableView(
+                    emptyTitle,
+                    systemImage: "bubble.left.and.bubble.right",
+                    description: Text("Выберите пункт из списка слева.")
+                )
+            }
+        }
+
+        private var emptyTitle: String {
+            switch mode {
+            case .chats: return "Выберите чат"
+            case .contacts: return "Выберите контакт"
+            case .calls: return "Выберите звонок"
             case .settings: return "Настройки"
             }
         }
 
-        var icon: String {
-            switch self {
-            case .chats: return "bubble.left.and.bubble.right"
-            case .contacts: return "person.2"
-            case .calls: return "phone"
-            case .settings: return "gearshape"
-            }
-        }
-
-        var searchPrompt: String {
-            switch self {
-            case .chats: return "Поиск чатов"
-            case .contacts: return "Поиск контактов"
-            case .calls: return "Поиск звонков"
-            case .settings: return "Поиск"
-            }
-        }
-    }
-
-    @ObservedObject var model: AppModel
-    @State private var mode: Mode = .chats
-    @State private var selectedJID: String?
-    @State private var searchText = ""
-    @State private var showingNewChat = false
-    @State private var showingNewGroup = false
-    @State private var pendingGroupDeletion: Conversation?
-
-    /// SwiftData-backed chat list; pinned-first ordering is applied in
-    /// `sortedChats` because `Bool` is not `Comparable` and cannot be a
-    /// `SortDescriptor`.
-    @Query(
-        sort: [
-            SortDescriptor(\Conversation.lastActivity, order: .reverse),
-        ]
-    )
-    private var conversations: [Conversation]
-
-    var body: some View {
-        NavigationSplitView {
-            sidebar
-                .navigationSplitViewColumnWidth(min: 240, ideal: 290, max: 380)
-        } detail: {
-            detailPane
-        }
-        .frame(minWidth: 840, minHeight: 560)
-        .toolbar {
-            if mode != .settings {
-                ToolbarItemGroup(placement: .primaryAction) {
-                    Button { showingNewGroup = true } label: {
-                        Image(systemName: "person.3.fill")
-                    }
-                    .accessibilityLabel("Новый групповой чат")
-                    .help("Новый групповой чат")
-                    Button { showingNewChat = true } label: {
-                        Image(systemName: "square.and.pencil")
-                    }
-                    .accessibilityLabel("Новый личный чат")
-                    .help("Новый личный чат")
+        private var selectedConversation: Conversation? {
+            guard let selectedJID else { return nil }
+            if mode == .calls {
+                guard
+                    let message = model.callHistoryMessages.first(where: {
+                        $0.clientID == selectedJID
+                    })
+                else {
+                    return nil
                 }
+                return conversations.first(where: {
+                    $0.jid == message.conversationID
+                })
             }
+            return conversations.first(where: { $0.jid == selectedJID })
         }
-        .sheet(isPresented: $showingNewChat) {
-            NewChatView(model: model)
+
+        private var defaultConversation: Conversation? {
+            mode == .chats ? sortedChats.first : nil
         }
-        .sheet(isPresented: $showingNewGroup) {
-            NewGroupView(model: model)
+
+        // MARK: Filtering and sorting
+
+        private var sortedChats: [Conversation] {
+            conversations.sorted(by: conversationSort)
         }
-        .alert(
-            "Удалить групповой чат?",
-            isPresented: Binding(
-                get: { pendingGroupDeletion != nil },
-                set: { if !$0 { pendingGroupDeletion = nil } }
+
+        private var filteredChats: [Conversation] {
+            searchText.isEmpty ? sortedChats : sortedChats.filter(matchesChat)
+        }
+
+        private func matchesChat(_ conversation: Conversation) -> Bool {
+            conversation.displayName.localizedCaseInsensitiveContains(
+                searchText
             )
-        ) {
-            Button("Удалить", role: .destructive) {
-                if let pendingGroupDeletion {
-                    model.deleteGroupChat(jid: pendingGroupDeletion.jid)
+                || conversation.jid.localizedCaseInsensitiveContains(searchText)
+        }
+
+        private func conversationSort(_ lhs: Conversation, _ rhs: Conversation)
+            -> Bool
+        {
+            if lhs.isPinned != rhs.isPinned { return lhs.isPinned }
+            if lhs.lastActivity != rhs.lastActivity {
+                return lhs.lastActivity > rhs.lastActivity
+            }
+            return lhs.displayName.localizedCaseInsensitiveCompare(
+                rhs.displayName
+            )
+                == .orderedAscending
+        }
+
+        private var filteredRoster: [Conversation] {
+            conversations
+                .filter {
+                    !$0.isGroup && model.rosterContactJIDs.contains($0.jid)
                 }
-                pendingGroupDeletion = nil
-            }
-            Button("Отмена", role: .cancel) { pendingGroupDeletion = nil }
-        } message: {
-            Text("Чат и его история будут удалены с этого устройства. Luma выйдет из комнаты, если вы в ней.")
+                .filter { searchText.isEmpty || matchesChat($0) }
+                .sorted(by: contactSort)
         }
-        .onAppear {
-            ensureSelection()
+
+        private var filteredGroups: [Conversation] {
+            conversations
+                .filter { $0.isGroup }
+                .filter { searchText.isEmpty || matchesChat($0) }
+                .sorted(by: contactSort)
         }
-    }
 
-    // MARK: Sidebar
-
-    private var sidebar: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                Menu {
-                    ForEach(Mode.allCases) { item in
-                        Button {
-                            switchMode(item)
-                        } label: {
-                            Label(item.title, systemImage: item.icon)
-                        }
-                    }
-                } label: {
-                    Image(systemName: "line.3.horizontal")
-                        .font(.system(size: 13, weight: .semibold))
-                        .frame(width: 28, height: 28)
-                        .contentShape(Rectangle())
-                }
-                .menuStyle(.borderlessButton)
-                .fixedSize()
-                .help("Меню")
-                .accessibilityLabel("Меню")
-
-                if mode != .settings {
-                    SearchField(text: $searchText, prompt: mode.searchPrompt)
-                }
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-
-            if mode != .settings {
-                ConnectionBanner(model: model)
-                sidebarList
-            }
+        private func contactSort(_ lhs: Conversation, _ rhs: Conversation)
+            -> Bool
+        {
+            lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName)
+                == .orderedAscending
         }
-    }
 
-    private var sidebarList: some View {
-        List(selection: $selectedJID) {
-            switch mode {
-            case .chats:
-                chatRows
-            case .contacts:
-                contactRows
-            case .calls:
-                callRows
-            case .settings:
-                EmptyView()
-            }
-        }
-        .listStyle(.sidebar)
-        .overlay {
-            if mode == .chats && filteredChats.isEmpty {
-                ContentUnavailableView(
-                    searchText.isEmpty ? "Нет чатов" : "Ничего не найдено",
-                    systemImage: searchText.isEmpty ? "bubble.left" : "magnifyingglass",
-                    description: Text(searchText.isEmpty
-                        ? "Создайте личный или групповой чат."
-                        : "Попробуйте другой JID или имя.")
+        private var filteredCalls: [ChatMessage] {
+            guard !searchText.isEmpty else { return model.callHistoryMessages }
+            return model.callHistoryMessages.filter { message in
+                message.conversationID.localizedCaseInsensitiveContains(
+                    searchText
                 )
-            }
-            if mode == .contacts && filteredRoster.isEmpty && filteredGroups.isEmpty {
-                ContentUnavailableView(
-                    searchText.isEmpty ? "Нет контактов" : "Ничего не найдено",
-                    systemImage: searchText.isEmpty ? "person.2" : "magnifyingglass",
-                    description: Text(searchText.isEmpty
-                        ? "Подключитесь к серверу, чтобы загрузить roster, или создайте групповой чат."
-                        : "Попробуйте другой JID или имя.")
-                )
+                    || (conversations.first(where: {
+                        $0.jid == message.conversationID
+                    })?.displayName
+                        .localizedCaseInsensitiveContains(searchText) ?? false)
             }
         }
-    }
 
-    @ViewBuilder
-    private var chatRows: some View {
-        ForEach(filteredChats) { conversation in
-            ConversationRow(
-                conversation: conversation,
-                imageData: model.avatarData(for: conversation.jid),
-                isEncrypted: model.encryptionEnabled(for: conversation.jid)
-            )
-            .tag(conversation.jid)
-            .contextMenu {
-                if conversation.isGroup {
-                    Button("Удалить", role: .destructive) {
-                        pendingGroupDeletion = conversation
-                    }
-                }
+        // MARK: Selection
+
+        private func switchMode(_ newMode: Mode) {
+            mode = newMode
+            selectedJID = nil
+            searchText = ""
+            if newMode == .chats {
+                selectedJID = sortedChats.first?.jid
+            }
+        }
+
+        private func ensureSelection() {
+            if mode == .chats, selectedJID == nil {
+                selectedJID = sortedChats.first?.jid
             }
         }
     }
-
-    @ViewBuilder
-    private var contactRows: some View {
-        if !filteredRoster.isEmpty {
-            Section("Люди из roster") {
-                ForEach(filteredRoster) { conversation in
-                    ContactRow(conversation: conversation, imageData: model.avatarData(for: conversation.jid))
-                        .tag(conversation.jid)
-                }
-            }
-        }
-        if !filteredGroups.isEmpty {
-            Section("Групповые чаты") {
-                ForEach(filteredGroups) { conversation in
-                    ContactRow(conversation: conversation, imageData: model.avatarData(for: conversation.jid))
-                        .tag(conversation.jid)
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var callRows: some View {
-        ForEach(filteredCalls) { message in
-            if let conversation = conversations.first(where: { $0.jid == message.conversationID }) {
-                CallHistoryRow(model: model, message: message, conversation: conversation)
-                    .tag(message.clientID)
-            } else {
-                CallHistoryRow(model: model, message: message, conversation: nil)
-                    .tag(message.clientID)
-            }
-        }
-    }
-
-    // MARK: Detail pane
-
-    @ViewBuilder
-    private var detailPane: some View {
-        if mode == .settings {
-            NavigationStack {
-                SettingsView(model: model, presentedAsTab: true)
-            }
-        } else if let conversation = selectedConversation ?? defaultConversation {
-            ChatView(model: model, conversation: conversation)
-                .id(conversation.jid)
-                .onAppear {
-                    model.selectConversation(id: conversation.jid)
-                }
-        } else {
-            ContentUnavailableView(
-                emptyTitle,
-                systemImage: "bubble.left.and.bubble.right",
-                description: Text("Выберите пункт из списка слева.")
-            )
-        }
-    }
-
-    private var emptyTitle: String {
-        switch mode {
-        case .chats: return "Выберите чат"
-        case .contacts: return "Выберите контакт"
-        case .calls: return "Выберите звонок"
-        case .settings: return "Настройки"
-        }
-    }
-
-    private var selectedConversation: Conversation? {
-        guard let selectedJID else { return nil }
-        if mode == .calls {
-            guard let message = model.callHistoryMessages.first(where: { $0.clientID == selectedJID }) else {
-                return nil
-            }
-            return conversations.first(where: { $0.jid == message.conversationID })
-        }
-        return conversations.first(where: { $0.jid == selectedJID })
-    }
-
-    private var defaultConversation: Conversation? {
-        mode == .chats ? sortedChats.first : nil
-    }
-
-    // MARK: Filtering and sorting
-
-    private var sortedChats: [Conversation] {
-        conversations.sorted(by: conversationSort)
-    }
-
-    private var filteredChats: [Conversation] {
-        searchText.isEmpty ? sortedChats : sortedChats.filter(matchesChat)
-    }
-
-    private func matchesChat(_ conversation: Conversation) -> Bool {
-        conversation.displayName.localizedCaseInsensitiveContains(searchText)
-            || conversation.jid.localizedCaseInsensitiveContains(searchText)
-    }
-
-    private func conversationSort(_ lhs: Conversation, _ rhs: Conversation) -> Bool {
-        if lhs.isPinned != rhs.isPinned { return lhs.isPinned }
-        if lhs.lastActivity != rhs.lastActivity { return lhs.lastActivity > rhs.lastActivity }
-        return lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName)
-            == .orderedAscending
-    }
-
-    private var filteredRoster: [Conversation] {
-        conversations
-            .filter { !$0.isGroup && model.rosterContactJIDs.contains($0.jid) }
-            .filter { searchText.isEmpty || matchesChat($0) }
-            .sorted(by: contactSort)
-    }
-
-    private var filteredGroups: [Conversation] {
-        conversations
-            .filter { $0.isGroup }
-            .filter { searchText.isEmpty || matchesChat($0) }
-            .sorted(by: contactSort)
-    }
-
-    private func contactSort(_ lhs: Conversation, _ rhs: Conversation) -> Bool {
-        lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName) == .orderedAscending
-    }
-
-    private var filteredCalls: [ChatMessage] {
-        guard !searchText.isEmpty else { return model.callHistoryMessages }
-        return model.callHistoryMessages.filter { message in
-            message.conversationID.localizedCaseInsensitiveContains(searchText)
-                || (conversations.first(where: { $0.jid == message.conversationID })?.displayName
-                    .localizedCaseInsensitiveContains(searchText) ?? false)
-        }
-    }
-
-    // MARK: Selection
-
-    private func switchMode(_ newMode: Mode) {
-        mode = newMode
-        selectedJID = nil
-        searchText = ""
-        if newMode == .chats {
-            selectedJID = sortedChats.first?.jid
-        }
-    }
-
-    private func ensureSelection() {
-        if mode == .chats, selectedJID == nil {
-            selectedJID = sortedChats.first?.jid
-        }
-    }
-}
 #endif

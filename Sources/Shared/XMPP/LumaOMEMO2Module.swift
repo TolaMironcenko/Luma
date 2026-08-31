@@ -388,7 +388,7 @@ final class LumaOMEMO2Module: AbstractPEPModule, XmppModule {
 
     public func decode(message: Message, from: BareJID, serverMsgId: String? = nil) -> DecryptionResult<Message, SignalError> {
         guard context != nil else { return .failure(.unknown) }
-        guard let encryptedEl = message.findChild(name: "encrypted", xmlns: Self.XMLNS),
+        guard let encryptedEl = message.firstChild(name: "encrypted", xmlns: Self.XMLNS),
             let headerEl = encryptedEl.findChild(name: "header"),
             let sid = UInt32(headerEl.getAttribute("sid") ?? "")
         else {

@@ -153,8 +153,13 @@ struct SettingsView: View {
                     }
                 }
             }
-            .navigationTitle("Настройки")
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text("Настройки")
+                        .font(.headline)
+                }
                 if !presentedAsTab {
                     ToolbarItem(placement: .confirmationAction) {
                         Button("Готово") { dismiss() }

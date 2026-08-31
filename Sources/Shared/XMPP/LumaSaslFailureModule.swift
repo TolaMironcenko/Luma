@@ -29,7 +29,7 @@ final class LumaSaslFailureModule: XmppModuleBase, XmppModule {
 
     func process(stanza: Stanza) throws {
         let condition = stanza.findChild()?.name
-        let text = stanza.findChild(name: "text")?.value
+        let text = stanza.firstChild(name: "text")?.value
         lock.lock()
         stored = Failure(condition: condition, text: text)
         lock.unlock()

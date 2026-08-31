@@ -19,6 +19,9 @@ struct NewGroupView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         TextField("room@conference.example.org", text: $roomJID)
                             .disableAutocorrection(true)
+                        #if os(iOS)
+                            .keyboardType(.emailAddress)
+                        #endif
                         TextField("Название (необязательно)", text: $name)
                         TextField("Ваш псевдоним", text: $nickname)
                     }
@@ -31,6 +34,9 @@ struct NewGroupView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         TextField("alice@example.org, bob@example.org", text: $invitees, axis: .vertical)
                             .lineLimit(2...5)
+                        #if os(iOS)
+                            .keyboardType(.emailAddress)
+                        #endif
                         Text("Укажите JID через запятую или с новой строки. Если комнаты ещё нет, Prosody создаст её с настройками по умолчанию.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)

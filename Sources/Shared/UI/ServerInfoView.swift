@@ -120,7 +120,7 @@ struct ServerInfoView: View {
             .font(.caption)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .listRowBackground(Color.clear)
+        .listRowBackground(Color.gray.opacity(0.16))
     }
 
     private func connectionRows() -> some View {
@@ -271,7 +271,7 @@ private extension ServerInformation.CapabilityStatus {
     var color: Color {
         switch self {
         case .success: return Color.green.opacity(0.16)
-        case .normal: return Color.clear
+        case .normal: return Color.gray.opacity(0.16)
         case .warning: return Color.orange.opacity(0.16)
         case .error: return Color.red.opacity(0.16)
         }
