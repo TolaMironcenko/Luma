@@ -72,6 +72,14 @@ struct ServerInformation: Equatable, Sendable {
     let externalServices: [ExternalService]
     let connectionStats: ConnectionStats
     let saslMethods: [String]
+    /// TLS version negotiated with the server during this connection
+    /// (probed from a parallel handshake when the library does not expose it).
+    let tlsVersion: String?
+    /// Cipher suite negotiated alongside the TLS version.
+    let tlsCipher: String?
+    /// SASL mechanism actually selected for authentication (the strongest
+    /// one the server advertises).
+    let saslMechanism: String?
     let supportsStreamManagement: Bool
     let supportsCarbons: Bool
     let supportsClientState: Bool

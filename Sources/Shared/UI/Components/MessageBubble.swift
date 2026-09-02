@@ -81,6 +81,13 @@ struct MessageBubble: View {
                         Label("Копировать текст", systemImage: "doc.on.doc")
                     }
                 }
+                if message.kind.isMedia, !message.isRetracted {
+                    Button {
+                        Task { await MediaDownloadService.save(message, model: model) }
+                    } label: {
+                        Label("Сохранить", systemImage: "square.and.arrow.down")
+                    }
+                }
                 if model.canRetryMediaMessage(message) {
                     Button(action: onRetry) {
                         Label("Повторить отправку", systemImage: "arrow.clockwise")

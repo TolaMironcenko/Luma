@@ -23,7 +23,10 @@ final class LayoutCheckUITests: XCTestCase {
         // `simctl io screenshot` captures of the tab bar.
         Thread.sleep(forTimeInterval: 12)
 
-        let chatSearch = app.textFields["Поиск чатов"]
+        // The Telegram-style tabs render `.searchable` fields as
+        // XCUIElementTypeSearchField (a TextField subtype in newer runtimes,
+        // but queried as `searchFields` on the iOS 26 simulator).
+        let chatSearch = app.searchFields["Поиск чатов"]
         XCTAssertTrue(chatSearch.waitForExistence(timeout: 30))
         addScreenshot(named: "chats-search-top", app: app)
 
@@ -37,7 +40,7 @@ final class LayoutCheckUITests: XCTestCase {
 
         app.buttons["Контакты"].tap()
 
-        let contactSearch = app.textFields["Поиск контактов"]
+        let contactSearch = app.searchFields["Поиск контактов"]
         XCTAssertTrue(contactSearch.waitForExistence(timeout: 15))
         XCTAssertLessThan(
             contactSearch.frame.minY,

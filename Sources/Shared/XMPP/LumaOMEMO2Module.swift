@@ -28,7 +28,7 @@ final class LumaOMEMO2Module: AbstractPEPModule, XmppModule {
     public static let XMLNS = "urn:xmpp:omemo:2"
     public static let DEVICES_LIST_NODE = "urn:xmpp:omemo:2:devices"
     public static let BUNDLES_NODE = "urn:xmpp:omemo:2:bundles"
-    public static let SCE_XMLNS = "urn:xmpp:sce:1"
+    public static let SCE_XMLNS = "urn:xmpp:sce:0"
     public static let HKDF_INFO = "OMEMO Payload"
 
     public let id: String = ID
@@ -73,6 +73,35 @@ final class LumaOMEMO2Module: AbstractPEPModule, XmppModule {
         guard let known else { return nil }
         guard let failed = devicesFetchError[jid] else { return known }
         return known.filter { !failed.contains($0) }
+    }
+
+    /// Returns the cached OMEMO 2 device list for `jid`, fetching it from
+    /// PEP on demand when `fetching` is true and nothing is cached yet. Used
+    /// by the send path so the first message to an OMEMO 2-only contact does
+    /// not fall back to the legacy protocol.
+    public func deviceIDs(for jid: BareJID, fetching: Bool) async -> [Int32]? {
+        if let known = devices(for: jid) { return known }
+        guard fetching, let context else { return nil }
+        return await withCheckedContinuation { continuation in
+            context.module(.pubsub).retrieveItems(
+                from: jid,
+                for: Self.DEVICES_LIST_NODE,
+                limit: .lastItems(1)
+            ) { [weak self] result in
+                guard let self,
+                    case .success(let items) = result,
+                    let listEl = items.items.first?.payload,
+                    listEl.name == "devices",
+                    listEl.xmlns == Self.XMLNS
+                else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                let known = listEl.mapChildren(transform: { $0.getAttribute("id").flatMap(Int32.init) })
+                self.devicesQueue.async { self.devices[jid] = known }
+                continuation.resume(returning: known)
+            }
+        }
     }
 
     public func isAvailable(for jid: BareJID) -> Bool {
@@ -166,6 +195,9 @@ final class LumaOMEMO2Module: AbstractPEPModule, XmppModule {
         // Track known devices and align identity states with the list.
         let known = list.mapChildren(transform: { $0.getAttribute("id").flatMap(Int32.init) })
         devicesQueue.async { [weak self] in self?.devices[jid] = known }
+        // Record which device IDs are OMEMO 2 so the encryption screen can
+        // badge them; legacy-only identities stay unmarked.
+        (storage as? LumaOMEMOStore)?.setOMEMO2DeviceIDs(Set(known), for: jid.stringValue)
         let active = storage.sessionStore.allDevices(for: jid.stringValue, activeAndTrusted: true)
         active.filter { !known.contains($0) }.forEach {
             _ = storage.identityKeyStore.setStatus(active: false, forIdentity: SignalAddress(name: jid.stringValue, deviceId: $0))
@@ -780,7 +812,7 @@ final class LumaOMEMO2Module: AbstractPEPModule, XmppModule {
         let alphabet = Array("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
         let rpadLength = Int.random(in: 12...96)
         let rpad = String((0..<rpadLength).map { _ in alphabet.randomElement()! })
-        var result = "<envelope xmlns='urn:xmpp:sce:1'><content>" + content + "</content>"
+        var result = "<envelope xmlns='" + Self.SCE_XMLNS + "'><content>" + content + "</content>"
         result += "<rpad>" + rpad + "</rpad>"
         result += "<from jid='" + escapeXML(fromJID) + "'/>"
         if let toJID {

@@ -98,6 +98,15 @@ private struct DeviceRow: View {
                     systemImage: device.isActive ? "iphone" : "iphone.slash"
                 )
                 .font(.headline)
+                Text(device.protocolName)
+                    .font(.caption2.weight(.medium))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .foregroundStyle(device.isOMEMO2 ? Color.indigo : Color.secondary)
+                    .background(
+                        (device.isOMEMO2 ? Color.indigo : Color.secondary).opacity(0.14),
+                        in: Capsule()
+                    )
                 Spacer()
                 Button(action: toggleVerification) {
                     Label(trustTitle, systemImage: trustIcon)

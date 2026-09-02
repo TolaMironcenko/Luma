@@ -270,6 +270,16 @@ final class XMPPService {
     private var activePassword: String?
     private var lastLoginDate: Date?
     private var smacksSessionEstablishedDate: Date?
+    private(set) var negotiatedSASLMechanism: String?
+    private(set) var negotiatedTLSVersion: String?
+    private(set) var negotiatedTLSCipher: String?
+    private var tlsProbeTask: Task<TLSProbeResult?, Never>?
+    /// TLS parameters and channel-binding data of the live connection,
+    /// captured by Luma's OpenSSL TLS processor and shared with SCRAM-PLUS.
+    private let channelBindingStore = LumaChannelBindingStore()
+    /// Mechanisms advertised in the stream features (classic SASL + SASL2),
+    /// shown on the server-information screen.
+    private var advertisedSASLMechanisms: [String] = []
     private var cancellables: Set<AnyCancellable> = []
     private var account: AccountConfiguration?
     private var archiveSyncStarted = false
@@ -418,6 +428,13 @@ final class XMPPService {
         roomRealJIDByNickname.removeAll()
         omemoConfiguredRoomJIDs.removeAll()
         knownChatStatePeers.removeAll()
+        negotiatedSASLMechanism = nil
+        negotiatedTLSVersion = nil
+        negotiatedTLSCipher = nil
+        tlsProbeTask?.cancel()
+        tlsProbeTask = nil
+        channelBindingStore.reset()
+        advertisedSASLMechanisms = []
 
         let account = try account.validated()
         self.account = account
@@ -517,6 +534,11 @@ final class XMPPService {
         saslFailureModule = nil
         lastLoginDate = nil
         smacksSessionEstablishedDate = nil
+        negotiatedSASLMechanism = nil
+        negotiatedTLSVersion = nil
+        negotiatedTLSCipher = nil
+        tlsProbeTask?.cancel()
+        tlsProbeTask = nil
         eventHandler?(.connection(.disconnected(reason: nil)))
     }
 
@@ -861,9 +883,12 @@ final class XMPPService {
                 )
                 // OMEMO 2 only when every member publishes OMEMO 2 devices;
                 // otherwise the legacy protocol keeps legacy members readable.
+                // Device lists are fetched on demand so a first message to a
+                // room never falls back to legacy just because the lists are
+                // not cached yet.
                 if let omemo2 = client.moduleOrNil(.omemo2),
                     omemo2.isReady,
-                    recipients.allSatisfy({ omemo2.devices(for: $0)?.isEmpty == false }) {
+                    await Self.allRecipientsPublishOMEMO2(recipients, module: omemo2) {
                     let encryptedMessage = try await encrypt(
                         message,
                         forGroupRecipients: recipients,
@@ -908,10 +933,13 @@ final class XMPPService {
         }
         if encrypted {
             // Prefer OMEMO 2 when the peer publishes OMEMO 2 devices; legacy
-            // OMEMO stays as the fallback for legacy-only contacts.
+            // OMEMO stays as the fallback for legacy-only contacts. The
+            // peer's device list is fetched on demand, so the very first
+            // message to an OMEMO 2-only contact no longer falls back to
+            // legacy.
             if let omemo2 = client.moduleOrNil(.omemo2),
                 omemo2.isReady,
-                omemo2.devices(for: peer)?.isEmpty == false {
+                await !(omemo2.deviceIDs(for: peer, fetching: true) ?? []).isEmpty {
                 let encryptedMessage = try await encrypt(message, using: omemo2)
                 try await chat.send(message: encryptedMessage.message)
                 return encryptedMessage.fingerprint
@@ -928,6 +956,32 @@ final class XMPPService {
         }
     }
     
+    /// OpenSSL version strings to their user-facing form ("TLSv1.3" →
+    /// "TLS 1.3").
+    private static func displayTLSVersion(_ version: String) -> String {
+        switch version {
+        case "TLSv1.3": return "TLS 1.3"
+        case "TLSv1.2": return "TLS 1.2"
+        case "TLSv1.1": return "TLS 1.1"
+        case "TLSv1": return "TLS 1.0"
+        default: return version
+        }
+    }
+
+    /// True when every MUC recipient has a non-empty OMEMO 2 device list.
+    /// Fetches the lists from PEP on demand for recipients that have not been
+    /// cached yet.
+    private static func allRecipientsPublishOMEMO2(
+        _ recipients: [BareJID],
+        module: LumaOMEMO2Module
+    ) async -> Bool {
+        for recipient in recipients {
+            let devices = await module.deviceIDs(for: recipient, fetching: true) ?? []
+            if devices.isEmpty { return false }
+        }
+        return true
+    }
+
     /// Loads one older MAM page for a single conversation. `before` is the
     /// oldest server/MAM id currently known by the UI. For direct chats the
     /// query is scoped with XEP-0313 `with`; for MUC the IQ is addressed to the
@@ -1439,6 +1493,58 @@ final class XMPPService {
                 ownFingerprint: omemoStorage?.ownFingerprint))
     }
 
+    /// Negotiated TLS version of the current connection, probing the
+    /// server with a parallel handshake when the underlying library does not
+    /// expose it. Single-flight: the first caller starts the probe, later
+    /// callers (and later screen refreshes) reuse the stored result.
+    private func currentTLSVersion() async -> String? {
+        // Prefer the negotiated parameters of the live connection, captured
+        // by the OpenSSL TLS processor.
+        if let state = channelBindingStore.negotiatedState {
+            negotiatedTLSVersion = Self.displayTLSVersion(state.version)
+            negotiatedTLSCipher = state.cipher
+            return negotiatedTLSVersion
+        }
+        if let existing = tlsProbeTask {
+            return await existing.value?.version
+        }
+        guard let client, client.state == .connected() else {
+            return negotiatedTLSVersion
+        }
+        let endpointHost: String
+        let endpointPort: Int
+        if let endpoint = client.connector?.currentEndpoint as? SocketConnector.Endpoint {
+            endpointHost = endpoint.host
+            endpointPort = endpoint.port
+        } else if let account {
+            endpointHost = account.manualHost ?? account.domain ?? account.normalizedJID
+            endpointPort = account.manualPort ?? (account.usesDirectTLS ? 5223 : 5222)
+        } else {
+            return negotiatedTLSVersion
+        }
+        let directTLS = account?.usesDirectTLS ?? (endpointPort == 5223)
+        let domain = account?.domain ?? client.userBareJid.domain
+        let task = Task.detached(priority: .utility) { () -> TLSProbeResult? in
+            await withCheckedContinuation { continuation in
+                TLSVersionProbe.run(
+                    host: endpointHost,
+                    port: UInt32(endpointPort),
+                    directTLS: directTLS,
+                    expectedDomain: domain
+                ) { result in
+                    continuation.resume(returning: result)
+                }
+            }
+        }
+        tlsProbeTask = task
+        let result = await task.value
+        if let result {
+            negotiatedTLSVersion = result.version
+            negotiatedTLSCipher = result.cipher
+        }
+        return negotiatedTLSVersion
+    }
+
     /// Queries the server's capabilities to populate the "server information"
     /// settings screen: XEP-0030 disco#info (server + account), XEP-0092
     /// software version, conference (MUC) services via disco#items, and
@@ -1510,11 +1616,18 @@ final class XMPPService {
         // SASL mechanisms and Client State Indication are advertised in the raw
         // stream <features>, not in disco#info, so read them from there.
         let streamFeaturesElement = client.module(.streamFeatures).streamFeatures.element
-        let saslMechanisms = streamFeaturesElement?
-            .findChild(name: "mechanisms", xmlns: "urn:ietf:params:xml:ns:xmpp-sasl")?
-            .children
-            .filter { $0.name == "mechanism" }
-            .compactMap { $0.value } ?? []
+        let saslMechanisms: [String]
+        if !advertisedSASLMechanisms.isEmpty {
+            // Includes both classic SASL and SASL2 mechanisms when the server
+            // advertises them in separate stream-feature elements.
+            saslMechanisms = advertisedSASLMechanisms
+        } else {
+            saslMechanisms = streamFeaturesElement?
+                .findChild(name: "mechanisms", xmlns: "urn:ietf:params:xml:ns:xmpp-sasl")?
+                .children
+                .filter { $0.name == "mechanism" }
+                .compactMap { $0.value } ?? []
+        }
         let supportsCSI = streamFeaturesElement?
             .findChild(name: "csi", xmlns: "urn:xmpp:csi:0") != nil
         let supportsRosterVersioning = streamFeaturesElement?
@@ -1528,6 +1641,23 @@ final class XMPPService {
 
         let stats = connectionStatsModule?.snapshot
             ?? LumaConnectionStatsModule.Snapshot(sent: 0, acknowledged: 0, received: 0)
+
+        let tlsVersion = await currentTLSVersion()
+        // Show the channel-binding type alongside a PLUS mechanism, so the
+        // screen reflects how the exchange was actually bound to the TLS
+        // channel (tls-exporter preferred, tls-server-end-point fallback).
+        let displaySASLMechanism: String?
+        if let negotiatedSASLMechanism {
+            if negotiatedSASLMechanism.hasSuffix("-PLUS"),
+                let bindingType = channelBindingStore.preferredChannelBindingType
+            {
+                displaySASLMechanism = negotiatedSASLMechanism + " · " + bindingType
+            } else {
+                displaySASLMechanism = negotiatedSASLMechanism
+            }
+        } else {
+            displaySASLMechanism = nil
+        }
 
         return ServerInformation(
             serverDomain: serverDomain,
@@ -1555,6 +1685,9 @@ final class XMPPService {
                 received: stats.received
             ),
             saslMethods: saslMechanisms,
+            tlsVersion: tlsVersion,
+            tlsCipher: negotiatedTLSCipher,
+            saslMechanism: displaySASLMechanism,
             supportsStreamManagement: client.module(.streamManagement).isAvailable,
             supportsCarbons: client.module(.messageCarbons).isAvailable,
             supportsClientState: supportsCSI,
@@ -1649,10 +1782,24 @@ final class XMPPService {
         // Registered before SaslModule so the raw RFC 6120 failure condition
         // is captured before Martin collapses it into SaslError.
         saslFailureModule = client.modulesManager.register(LumaSaslFailureModule())
-        // SCRAM-SHA-512 first: Martin only ships SHA-1/SHA-256, while modern
-        // servers prefer SHA-512. The server must advertise it or Martin's
-        // mechanism selection skips it.
+        // Channel-binding SCRAM first (tls-exporter / tls-server-end-point
+        // over the live TLS 1.3 connection), then SCRAM-SHA-512: Martin only
+        // ships SHA-1/SHA-256, while modern servers prefer SHA-512. A
+        // mechanism is only eligible when the server advertises it, and the
+        // PLUS variants additionally gate on available binding data.
         let sasl = client.modulesManager.register(SaslModule())
+        sasl.addMechanism(
+            LumaScramPlusMechanism(hash: .sha1, channelBindingStore: channelBindingStore),
+            first: true
+        )
+        sasl.addMechanism(
+            LumaScramPlusMechanism(hash: .sha256, channelBindingStore: channelBindingStore),
+            first: true
+        )
+        sasl.addMechanism(
+            LumaScramPlusMechanism(hash: .sha512, channelBindingStore: channelBindingStore),
+            first: true
+        )
         sasl.addMechanism(LumaScramSha512Mechanism(), first: true)
         _ = client.modulesManager.register(ResourceBinderModule())
         _ = client.modulesManager.register(SessionEstablishmentModule())
@@ -1754,6 +1901,13 @@ final class XMPPService {
                     expectedDomain: expectedDomain
                 )
             }
+            // SecureTransport caps stream TLS at 1.2 and has no keying
+            // exporter, so Luma supplies its own OpenSSL TLS 1.3 processor
+            // (TLS 1.3 + STARTTLS + channel binding). Certificate trust is
+            // still evaluated through the custom validator above.
+            options.networkProcessorProviders = [
+                LumaTLSNetworkProcessorProvider(channelBindingStore: channelBindingStore),
+            ]
             if let host = account.manualHost {
                 let defaultPort = account.usesDirectTLS ? 5223 : 5222
                 options.dnsResolver = StaticDNSSrvResolver(
@@ -2067,7 +2221,26 @@ final class XMPPService {
                 security = .plaintext
                 fingerprint = nil
                 contentMessage = message
+            case .duplicateMessage:
+                // The Double Ratchet message key is single-use: `.duplicateMessage`
+                // means this exact stanza was already decrypted on an earlier
+                // delivery (carbon, SMACK resend or a previous MAM pass), and its
+                // content was handled then. Emitting another bubble here turned the
+                // archived echoes of our own receipts, chat markers and resent
+                // copies into phantom "Не удалось расшифровать сообщение"
+                // placeholders that do not exist on the server. Mirrors the group
+                // message path.
+                return
             default:
+                if outgoing {
+                    // Our own outgoing echo cannot be decrypted back (no
+                    // encrypt-to-self key, or a stale self-session). The
+                    // optimistic local copy already carries the content, and
+                    // messages sent from other devices have nothing we could
+                    // render. Other clients never surface these stanzas as
+                    // messages, so dropping them matches the server history.
+                    return
+                }
                 // Some clients include a plaintext <body> fallback alongside the
                 // OMEMO <encrypted> payload. When decryption fails, prefer that
                 // fallback so a readable message is never shown as undecryptable.
@@ -2076,13 +2249,6 @@ final class XMPPService {
                     fingerprint = nil
                     contentMessage = message
                 } else {
-                    // Includes `.duplicateMessage` (our own message without an
-                    // encrypt-to-self key, or a key already consumed by a
-                    // previous session): the body can no longer be recovered
-                    // here. Still emit the message (as an undecryptable bubble)
-                    // instead of dropping it, so history does not silently
-                    // stop. Genuine duplicates are filtered later in AppModel
-                    // by stanza/origin ID.
                     security = .decryptionFailed
                     fingerprint = nil
                     contentMessage = nil
@@ -4001,6 +4167,12 @@ final class XMPPService {
                 condition: saslFailureModule?.lastFailure?.condition,
                 serverText: saslFailureModule?.lastFailure?.text
             )
+        case .sslCertError:
+            return "Сертификат сервера не прошёл проверку доверия."
+        case .timeout:
+            return "Сервер не ответил вовремя."
+        case .noRouteToServer:
+            return "Сервер недоступен по сети."
         default:
             return reason.localizedDescription
         }
@@ -4014,13 +4186,43 @@ final class XMPPService {
     }
 
     private func applySASLprepIfNeeded(client: XMPPClient, features: Element) {
-        guard let activePassword, !activePassword.isEmpty else { return }
+        // Classic RFC 6120 mechanisms, SASL2 (RFC 9050) mechanisms and the
+        // XEP-0440 channel-binding types are three separate stream-feature
+        // elements; collect all three so the selection and the server screen
+        // see the complete picture.
         let mechanisms =
             features
             .findChild(name: "mechanisms", xmlns: "urn:ietf:params:xml:ns:xmpp-sasl")?
             .children
             .filter { $0.name == "mechanism" }
             .compactMap { $0.value } ?? []
+        let sasl2Mechanisms =
+            features
+            .findChild(name: "authentication", xmlns: "urn:xmpp:sasl:2")?
+            .children
+            .filter { $0.name == "mechanism" }
+            .compactMap { $0.value } ?? []
+        let channelBindingTypes = Set(
+            features
+            .findChild(name: "sasl-channel-binding", xmlns: "urn:xmpp:sasl-cb:0")?
+            .children
+            .filter { $0.name == "channel-binding" }
+            .compactMap { $0.getAttribute("type") } ?? []
+        )
+        channelBindingStore.setAdvertisedChannelBindingTypes(channelBindingTypes)
+        advertisedSASLMechanisms = Array(Set(mechanisms + sasl2Mechanisms))
+        // Record the mechanism the SASL layer picks for this connection: the
+        // strongest password-based one the server advertises
+        // (SCRAM-*-PLUS > SCRAM-SHA-512 > … > PLAIN). Keep the previous value
+        // when the server sends features without mechanisms (e.g. stream
+        // resumption after SMACK), so the screen does not flip to unknown.
+        if let selected = SASLMechanismPreference.selected(
+            among: mechanisms,
+            allowsChannelBinding: channelBindingStore.canUseChannelBinding
+        ) {
+            negotiatedSASLMechanism = selected
+        }
+        guard let activePassword, !activePassword.isEmpty else { return }
         guard mechanisms.contains(where: { $0.hasPrefix("SCRAM-") }) else { return }
         guard case .password(let currentPassword, _, _) = client.connectionConfiguration.credentials,
             let prepared = try? SASLprep.prepare(activePassword),

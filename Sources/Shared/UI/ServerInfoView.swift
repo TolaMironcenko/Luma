@@ -55,8 +55,14 @@ struct ServerInfoView: View {
             Section("Это программное обеспечение, работающее на вашем сервере.") {
                 softwareEntry(info)
             }
-            Section("Параметры подключения к вашему серверу.") {
-                connectionRows()
+            Section {
+                connectionRows(info)
+            } header: {
+                Text("Параметры подключения к вашему серверу.")
+            } footer: {
+                Text(
+                    "Luma автоматически выбирает самый безопасный вариант: при TLS договаривается о максимальной версии (1.3 > 1.2), а при входе — о самом стойком SASL-механизме, который поддерживает сервер."
+                )
             }
             Section("Современные возможности XMPP, обнаруженные на вашем сервере после входа.") {
                 ForEach(info.capabilities) { capability in
@@ -123,7 +129,7 @@ struct ServerInfoView: View {
         .listRowBackground(Color.gray.opacity(0.16))
     }
 
-    private func connectionRows() -> some View {
+    private func connectionRows(_ info: ServerInformation) -> some View {
         Group {
             if let account = model.account {
                 if let host = account.manualHost {
@@ -137,6 +143,19 @@ struct ServerInfoView: View {
                     LabeledContent("Хост", value: "DNS SRV")
                 }
                 LabeledContent("Ресурс", value: account.effectiveResource)
+            }
+            if let tlsVersion = info.tlsVersion {
+                LabeledContent(
+                    "Версия TLS",
+                    value: info.tlsCipher.map { "\(tlsVersion) · \($0)" } ?? tlsVersion
+                )
+            } else {
+                LabeledContent("Версия TLS", value: "Неизвестно")
+            }
+            if let saslMechanism = info.saslMechanism {
+                LabeledContent("SASL-механизм", value: saslMechanism)
+            } else {
+                LabeledContent("SASL-механизм", value: "Неизвестно")
             }
         }
     }

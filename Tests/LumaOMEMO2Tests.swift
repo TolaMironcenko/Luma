@@ -72,7 +72,7 @@ final class LumaOMEMO2Tests: XCTestCase {
         )
         let envelope = try XCTUnwrap(Element.from(string: xml))
         XCTAssertEqual(envelope.name, "envelope")
-        XCTAssertEqual(envelope.xmlns, "urn:xmpp:sce:1")
+        XCTAssertEqual(envelope.xmlns, "urn:xmpp:sce:0")
 
         let content = try XCTUnwrap(envelope.findChild(name: "content"))
         let body = try XCTUnwrap(content.findChild(name: "body"))
@@ -102,6 +102,16 @@ final class LumaOMEMO2Tests: XCTestCase {
         )
     }
 
+    func testSCEEnvelopeUsesSCE0Namespace() throws {
+        // XEP-0420 Stanza Content Encryption uses urn:xmpp:sce:0; OMEMO 2
+        // relies on that exact namespace for the encrypted payload envelope.
+        XCTAssertEqual(LumaOMEMO2Module.SCE_XMLNS, "urn:xmpp:sce:0")
+        let xml = LumaOMEMO2Module.envelopeXML(body: "hi", from: "a@b.c", to: nil)
+        let envelope = try XCTUnwrap(Element.from(string: xml))
+        XCTAssertEqual(envelope.name, "envelope")
+        XCTAssertEqual(envelope.xmlns, "urn:xmpp:sce:0")
+    }
+
     // MARK: - Bundle parsing
 
     func testBundleParsing() throws {
@@ -124,6 +134,55 @@ final class LumaOMEMO2Tests: XCTestCase {
         // Wrong namespace is rejected.
         bundle.xmlns = "urn:xmpp:omemo:0"
         XCTAssertNil(OMEMO2Bundle(from: bundle))
+    }
+
+    // MARK: - OMEMODevice protocol label & store wiring
+
+    func testOMEMODeviceProtocolLabel() {
+        let legacy = OMEMODevice(
+            jid: "bob@example.org",
+            deviceID: 5,
+            fingerprint: "aa",
+            trust: .trusted,
+            isActive: true,
+            isOwn: false,
+            isOMEMO2: false
+        )
+        let omemo2 = OMEMODevice(
+            jid: "bob@example.org",
+            deviceID: 5,
+            fingerprint: "bb",
+            trust: .trusted,
+            isActive: true,
+            isOwn: false,
+            isOMEMO2: true
+        )
+
+        XCTAssertEqual(legacy.protocolName, "OMEMO")
+        XCTAssertEqual(omemo2.protocolName, "OMEMO 2")
+        // Same JID/deviceID across protocols must not collide as list rows.
+        XCTAssertEqual(legacy.id, "bob@example.org|5|legacy")
+        XCTAssertEqual(omemo2.id, "bob@example.org|5|omemo2")
+        XCTAssertNotEqual(legacy.id, omemo2.id)
+    }
+
+    func testStoreMarksOMEMO2DeviceIDs() throws {
+        let store = LumaOMEMOStore(accountJID: "alice@example.org")
+        let context = try XCTUnwrap(SignalContext(withStorage: store))
+        _ = context
+        let ownID = store.localRegistrationID
+        XCTAssertNotEqual(ownID, 0)
+
+        store.setOMEMO2DeviceIDs([Int32(bitPattern: ownID)], for: "alice@example.org")
+        let devices = store.devices(for: "alice@example.org")
+        let own = try XCTUnwrap(devices.first { $0.isOwn })
+        XCTAssertTrue(own.isOMEMO2)
+
+        // Clearing the published set drops the badge.
+        store.setOMEMO2DeviceIDs([], for: "alice@example.org")
+        let cleared = store.devices(for: "alice@example.org")
+        let clearedOwn = try XCTUnwrap(cleared.first { $0.isOwn })
+        XCTAssertFalse(clearedOwn.isOMEMO2)
     }
 
     // MARK: - Double Ratchet round trip (shared with the legacy module)

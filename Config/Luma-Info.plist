@@ -32,6 +32,8 @@
 	<string>Luma использует геопозицию только когда вы выбираете отправку точки в чате.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Luma использует микрофон для голосовых сообщений и звонков.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Luma сохраняет фотографии и видео в вашу медиатеку.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UIBackgroundModes</key>

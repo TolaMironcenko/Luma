@@ -314,7 +314,7 @@ grep -q 'decodeOmemo2OffMain' Sources/Shared/XMPP/XMPPService.swift || {
   echo "Incoming messages must route OMEMO 2 payloads to the OMEMO 2 module"
   exit 1
 }
-grep -q 'package = .*XCLocalSwiftPackageReference .ThirdParty/MartinOMEMO.' Luma.xcodeproj/project.pbxproj || {
+grep -q 'XCLocalSwiftPackageReference "ThirdParty/MartinOMEMO"' Luma.xcodeproj/project.pbxproj || {
   echo "The vendored MartinOMEMO package must stay linked in the generated project (run make project)"
   exit 1
 }

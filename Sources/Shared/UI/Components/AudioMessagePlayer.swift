@@ -53,6 +53,16 @@ struct AudioMessagePlayer: View {
                         .font(.caption2.monospacedDigit())
                         .foregroundStyle(secondaryText)
                     Spacer()
+                    Button(action: saveToFiles) {
+                        Image(systemName: "square.and.arrow.down")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(accent)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(accent.opacity(0.14), in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Сохранить в Файлы")
                     Button(action: playback.cycleVoiceRate) {
                         Text(rateText)
                             .font(.caption2.monospacedDigit().weight(.bold))
@@ -95,6 +105,13 @@ struct AudioMessagePlayer: View {
                             countStyle: .file
                         ))
                     }
+                    Spacer()
+                    Button(action: saveToFiles) {
+                        Image(systemName: "square.and.arrow.down")
+                            .foregroundStyle(accent)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Сохранить в Файлы")
                 }
                 .font(.caption2.monospacedDigit())
                 .foregroundStyle(secondaryText)
@@ -183,6 +200,10 @@ struct AudioMessagePlayer: View {
 
     private var secondaryText: Color {
         message.direction == .outgoing ? .white.opacity(0.78) : .secondary
+    }
+
+    private func saveToFiles() {
+        Task { await MediaDownloadService.save(message, model: model) }
     }
 
     private func togglePlayback() {

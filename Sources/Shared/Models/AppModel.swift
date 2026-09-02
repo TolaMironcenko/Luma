@@ -1913,6 +1913,10 @@ final class AppModel: ObservableObject {
         errorMessage = nil
     }
 
+    func clearInformationalMessage() {
+        informationalMessage = nil
+    }
+
     private func beginMediaSendActivity() -> UUID {
         let token = mediaSendActivity.begin()
         isSendingAttachment = mediaSendActivity.isActive
@@ -3100,14 +3104,32 @@ final class AppModel: ObservableObject {
                 cursor: lastSuccessfulMAMCursor
             )
         }
+        // One-time cleanup of phantom «Не удалось расшифровать сообщение»
+        // placeholders: outgoing echoes the client could not decrypt back
+        // (broken encrypt-to-self sessions) used to be rendered as
+        // undecryptable bubbles. XMPPService now drops those echoes, so purge
+        // the leftovers from the local store instead of keeping the noise.
+        let phantomPlaceholderIDs = Set(
+            snapshot.messages
+                .filter { $0.direction == .outgoing && $0.security == .decryptionFailed }
+                .map(\.clientID)
+        )
+        for message in snapshot.messages
+        where phantomPlaceholderIDs.contains(message.clientID) {
+            modelContext.delete(message)
+        }
         messages = snapshot.messages.filter {
-            !locallyDeletedMessageIDs.contains(
-                Self.localDeletionKey(
-                    messageID: $0.clientID,
-                    conversationID: $0.conversationID
-                ))
+            !phantomPlaceholderIDs.contains($0.clientID)
+                && !locallyDeletedMessageIDs.contains(
+                    Self.localDeletionKey(
+                        messageID: $0.clientID,
+                        conversationID: $0.conversationID
+                    ))
         }
         rebuildMessageIndex()
+        if !phantomPlaceholderIDs.isEmpty {
+            schedulePersist()
+        }
         let avatarJIDs = Set(snapshot.conversations.filter { !$0.isGroup }.map(\.jid) + [jid])
         for avatarJID in avatarJIDs {
             if let data = await avatarCache.data(for: avatarJID) {

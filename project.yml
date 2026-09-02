@@ -35,12 +35,15 @@ packages:
   WebRTC:
     url: https://github.com/stasel/WebRTC.git
     exactVersion: 150.0.0
+  OpenSSL:
+    url: https://github.com/krzyzanowskim/OpenSSL.git
+    from: 3.4.0
 
 targets:
   Luma:
     type: application
     platform: iOS
-    deploymentTarget: "17.0"
+    deploymentTarget: "26.0"
     sources:
       - path: Sources/App
       - path: Sources/Shared
@@ -52,6 +55,7 @@ targets:
       - package: Martin
       - package: MartinOMEMO
       - package: WebRTC
+      - package: OpenSSL
       - target: LumaWatch
     info:
       path: Config/Luma-Info.plist
@@ -72,6 +76,7 @@ targets:
         NSLocalNetworkUsageDescription: Luma использует локальную сеть для прямого соединения аудио- и видеозвонков.
         NSLocationWhenInUseUsageDescription: Luma использует геопозицию только когда вы выбираете отправку точки в чате.
         NSFaceIDUsageDescription: Luma использует Face ID для разблокировки приложения.
+        NSPhotoLibraryAddUsageDescription: Luma сохраняет фотографии и видео в вашу медиатеку.
     entitlements:
       path: Config/Luma.entitlements
       properties: {}
@@ -90,7 +95,7 @@ targets:
   LumaMac:
     type: application
     platform: macOS
-    deploymentTarget: "14.0"
+    deploymentTarget: "26.0"
     sources:
       - path: Sources/App
       - path: Sources/Shared
@@ -102,6 +107,7 @@ targets:
       - package: Martin
       - package: MartinOMEMO
       - package: WebRTC
+      - package: OpenSSL
     info:
       path: Config/LumaMac-Info.plist
       properties:
@@ -122,6 +128,7 @@ targets:
         com.apple.security.network.client: true
         com.apple.security.network.server: true
         com.apple.security.files.user-selected.read-only: true
+        com.apple.security.files.user-selected.read-write: true
         com.apple.security.device.camera: true
         com.apple.security.device.audio-input: true
         com.apple.security.personal-information.location: true
@@ -142,7 +149,7 @@ targets:
     # try to produce Luma.app/Luma.
     type: application
     platform: watchOS
-    deploymentTarget: "10.0"
+    deploymentTarget: "26.0"
     sources:
       - path: Sources/Watch
       - path: Resources/Shared.xcassets
@@ -177,7 +184,7 @@ targets:
   LumaTests:
     type: bundle.unit-test
     platform: iOS
-    deploymentTarget: "17.0"
+    deploymentTarget: "26.0"
     sources:
       - path: Tests
     dependencies:
@@ -190,7 +197,7 @@ targets:
   LumaUITests:
     type: bundle.ui-testing
     platform: iOS
-    deploymentTarget: "17.0"
+    deploymentTarget: "26.0"
     sources:
       - path: UITests
     dependencies:

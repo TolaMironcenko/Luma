@@ -86,17 +86,36 @@ final class LumaOMEMOStore: SignalStorage {
     }
 
     func devices(for jid: String) -> [OMEMODevice] {
-        identityAdapter.identities(forName: jid.lowercased()).map { identity in
+        let key = jid.lowercased()
+        let published: Set<Int32> = Set(repository.read { $0.omemo2DeviceIDs?[key] ?? [] })
+        return identityAdapter.identities(forName: key).map { identity in
             OMEMODevice(
                 jid: identity.address.name,
                 deviceID: identity.address.deviceId,
                 fingerprint: identity.fingerprint,
                 trust: Self.mapTrust(identity.status),
                 isActive: identity.status.isActive,
-                isOwn: identity.own
+                isOwn: identity.own,
+                isOMEMO2: published.contains(identity.address.deviceId)
             )
         }
         .sorted { lhs, rhs in lhs.deviceID < rhs.deviceID }
+    }
+
+    /// Records the set of device IDs a JID currently publishes under
+    /// `urn:xmpp:omemo:2`. Drives the per-device protocol badge on the
+    /// encryption screen and persists so the label survives a relaunch.
+    func setOMEMO2DeviceIDs(_ deviceIDs: Set<Int32>, for jid: String) {
+        let key = jid.lowercased()
+        repository.mutate { state in
+            var all = state.omemo2DeviceIDs ?? [:]
+            if deviceIDs.isEmpty {
+                all.removeValue(forKey: key)
+            } else {
+                all[key] = deviceIDs.sorted()
+            }
+            state.omemo2DeviceIDs = all
+        }
     }
 
     func hasSession(for address: SignalAddress) -> Bool {
@@ -573,6 +592,9 @@ private struct StoredOMEMOState: Codable {
     var signedPreKeys: [String: Data]
     var sessions: [String: Data]
     var senderKeys: [String: Data]
+    // Lowercased JID -> device IDs currently published under urn:xmpp:omemo:2.
+    // Optional for backward compatibility with state written before OMEMO 2.
+    var omemo2DeviceIDs: [String: [Int32]]?
 
     static let empty = StoredOMEMOState(
         registrationID: 0,
@@ -581,7 +603,8 @@ private struct StoredOMEMOState: Codable {
         preKeys: [:],
         signedPreKeys: [:],
         sessions: [:],
-        senderKeys: [:]
+        senderKeys: [:],
+        omemo2DeviceIDs: nil
     )
 }
 
