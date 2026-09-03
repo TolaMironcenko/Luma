@@ -15,6 +15,7 @@
 		03C65C3DAA1D8776AF496EFA /* LumaRoomStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9F226A1F8D82B39630F9CEB /* LumaRoomStore.swift */; };
 		03F2CD213153D0EF5CBC8021 /* EncryptionPreferenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD286F7AF06DFC5488FF0CEA /* EncryptionPreferenceTests.swift */; };
 		0535722A2D4FC893F16D78F1 /* MessageReplySwipeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77D3F72BE63D8F360ECA0419 /* MessageReplySwipeTests.swift */; };
+		059A5169D66AD8F04B341403 /* LumaSaslChallengeModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4F90741D722FD1A972B4C78 /* LumaSaslChallengeModule.swift */; };
 		067D121E9C8D8EA076D974FB /* RTCVideoRendererView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5003B4F9DF154543555E9825 /* RTCVideoRendererView.swift */; };
 		087E600676B3F6134BB26112 /* CallView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B11FED2D58621C071C3AD14 /* CallView.swift */; };
 		088945A14C15828F5265AA29 /* ArchiveSyncRecoveryPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28187D29B1BB6E3ECB02F637 /* ArchiveSyncRecoveryPolicy.swift */; };
@@ -142,6 +143,7 @@
 		7AC93485DA12BC90717739E9 /* ChatMediaImageCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = A438A50BC08940CA1410B4FA /* ChatMediaImageCache.swift */; };
 		7BC399937E4586EC5067282C /* GeoLocation.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD13FA20B6C2CD8B6718BF86 /* GeoLocation.swift */; };
 		7C89D0095051D751FA245324 /* ArchiveMetadataRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CC7F3C5D27D08B1B01D712C /* ArchiveMetadataRecord.swift */; };
+		7D095DA2AAD5E7D813586E7D /* LumaSaslChallengeModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4F90741D722FD1A972B4C78 /* LumaSaslChallengeModule.swift */; };
 		7D93BF350FBBF6F9EB29BA23 /* MediaPickerSelectionPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1E6875B522254FFB5FA880E /* MediaPickerSelectionPolicy.swift */; };
 		7F012252FA73A8282B92323C /* LumaApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8C051C2A7014E8B5E825477 /* LumaApp.swift */; };
 		7F211C3BBA81E5D43D3A88AE /* LumaCallEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72EC7DC2FE873C0BA4321496 /* LumaCallEngine.swift */; };
@@ -232,6 +234,7 @@
 		DA77E8A49D2D091EC0975DD3 /* InlineVideoPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8C81B9255E9886FB86E0785 /* InlineVideoPlayer.swift */; };
 		DBB0216BFAB04C3847FEE95C /* GroupInfoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAA74044D62409FAC6062BC1 /* GroupInfoView.swift */; };
 		DC4FAE63AB8AF89C30512763 /* MediaFileIOTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 772A4F24CAF527E328657749 /* MediaFileIOTests.swift */; };
+		DD7E0B9153FCC21BAF6EE655 /* SCRAMDowngradeProtectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F5C75CB772638C15C54F101 /* SCRAMDowngradeProtectionTests.swift */; };
 		E2245416CB055ECEF0C5F81D /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A338A8EB30206647BDD922F /* SettingsView.swift */; };
 		E42A674072CE5D3AF1F5848D /* Conversation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7846C2EEE2551C6690A4FDC6 /* Conversation.swift */; };
 		E449F2B17E6D5053EBA7F6A8 /* Shared.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 7C9866558B72CB1909A01EEC /* Shared.xcassets */; };
@@ -365,6 +368,7 @@
 		4380219D3AF1D75EDF4D3167 /* MediaViewer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaViewer.swift; sourceTree = "<group>"; };
 		43A4CE3E678096BA76F2988C /* NewChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewChatView.swift; sourceTree = "<group>"; };
 		47680B7C615374A8C245818F /* AppLockPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLockPolicy.swift; sourceTree = "<group>"; };
+		4F5C75CB772638C15C54F101 /* SCRAMDowngradeProtectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SCRAMDowngradeProtectionTests.swift; sourceTree = "<group>"; };
 		5003B4F9DF154543555E9825 /* RTCVideoRendererView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RTCVideoRendererView.swift; sourceTree = "<group>"; };
 		5078CBF0520AA3BE7D2E65E0 /* SCRAMSHA512Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SCRAMSHA512Tests.swift; sourceTree = "<group>"; };
 		515DD6F1F80A848C39EBAE84 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
@@ -465,6 +469,7 @@
 		F0A35C9A7B52458996513382 /* WatchVoiceRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchVoiceRecorder.swift; sourceTree = "<group>"; };
 		F207C1B20DE3780F1754F81D /* ConnectionBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionBanner.swift; sourceTree = "<group>"; };
 		F26F91180E43DE9C135B68C1 /* EmojiCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmojiCatalog.swift; sourceTree = "<group>"; };
+		F4F90741D722FD1A972B4C78 /* LumaSaslChallengeModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LumaSaslChallengeModule.swift; sourceTree = "<group>"; };
 		F69AB3930D5E93CB77EA9C7D /* CryptoKitAESGCMEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CryptoKitAESGCMEngineTests.swift; sourceTree = "<group>"; };
 		F6C7D0F207377DE99146A0D2 /* NotificationPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationPolicyTests.swift; sourceTree = "<group>"; };
 		F8CABD9D1B4C987EF6AB19A6 /* StaticDNSSrvResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StaticDNSSrvResolver.swift; sourceTree = "<group>"; };
@@ -509,6 +514,7 @@
 				24A68154C2D2B3E9AB0C145F /* LumaOMEMOStore.swift */,
 				E9F226A1F8D82B39630F9CEB /* LumaRoomStore.swift */,
 				F92830FB64B5BD0A06BC828D /* LumaRosterStore.swift */,
+				F4F90741D722FD1A972B4C78 /* LumaSaslChallengeModule.swift */,
 				C3E21A7D359AF7A7AF97D8DE /* LumaSaslFailureModule.swift */,
 				050B83F6DA3A04B661FFA3B1 /* LumaScramPlusMechanism.swift */,
 				7C16CFC03E7F478838A704FD /* LumaScramSha512Mechanism.swift */,
@@ -655,6 +661,7 @@
 				1F7B2B37E9E8E6A46ED7547A /* SaslFailureMessageTests.swift */,
 				37D79A5AC35479F474FF3F44 /* SASLMechanismPreferenceTests.swift */,
 				13EFA01112297641B9B0EBC5 /* SASLprepTests.swift */,
+				4F5C75CB772638C15C54F101 /* SCRAMDowngradeProtectionTests.swift */,
 				21D03F8C05843DD139C1A4CE /* SCRAMPlusTests.swift */,
 				5078CBF0520AA3BE7D2E65E0 /* SCRAMSHA512Tests.swift */,
 				9C8B12EFBC83F9235B6AF992 /* VideoNoteRecordingCompletionPolicyTests.swift */,
@@ -1040,6 +1047,7 @@
 				FB1052104B90994CF03FE6A2 /* LumaOMEMOStore.swift in Sources */,
 				CBED8565C1313DC03D21A105 /* LumaRoomStore.swift in Sources */,
 				F1713D1CD4E019540BFA78FE /* LumaRosterStore.swift in Sources */,
+				059A5169D66AD8F04B341403 /* LumaSaslChallengeModule.swift in Sources */,
 				0BD15E9B1C488AA2B7B56AF7 /* LumaSaslFailureModule.swift in Sources */,
 				ED1C54A2FB844226AA284CCC /* LumaScramPlusMechanism.swift in Sources */,
 				E6B279889E62AB9AD0C5BCE1 /* LumaScramSha512Mechanism.swift in Sources */,
@@ -1159,6 +1167,7 @@
 				1B20F2D3E4F18E6094B103BF /* LumaOMEMOStore.swift in Sources */,
 				03C65C3DAA1D8776AF496EFA /* LumaRoomStore.swift in Sources */,
 				7F4C00E98574C8E5193F442E /* LumaRosterStore.swift in Sources */,
+				7D095DA2AAD5E7D813586E7D /* LumaSaslChallengeModule.swift in Sources */,
 				C1AB954660804F7925607038 /* LumaSaslFailureModule.swift in Sources */,
 				FCC5133038CDBEC39B5B42D3 /* LumaScramPlusMechanism.swift in Sources */,
 				127C4B7A5083081D22FD21CD /* LumaScramSha512Mechanism.swift in Sources */,
@@ -1245,6 +1254,7 @@
 				9E98F99F3FBFC9DAB99A3650 /* NotificationPolicyTests.swift in Sources */,
 				5A5C811D7D19AE7C694273FC /* SASLMechanismPreferenceTests.swift in Sources */,
 				1B7C9F60AA7BFF6A2C0FE45D /* SASLprepTests.swift in Sources */,
+				DD7E0B9153FCC21BAF6EE655 /* SCRAMDowngradeProtectionTests.swift in Sources */,
 				662B8E72F00F5A77DE28819A /* SCRAMPlusTests.swift in Sources */,
 				3BF0521699C170F8411386CD /* SCRAMSHA512Tests.swift in Sources */,
 				3DDB1B15BCE5B58D12B60558 /* SaslFailureMessageTests.swift in Sources */,

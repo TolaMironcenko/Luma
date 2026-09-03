@@ -366,7 +366,7 @@ grep -q 'SCRAM-SHA-512' Sources/Shared/XMPP/LumaScramSha512Mechanism.swift || {
   echo "The SCRAM-SHA-512 mechanism must be available"
   exit 1
 }
-grep -q 'addMechanism(LumaScramSha512Mechanism' Sources/Shared/XMPP/XMPPService.swift || {
+grep -q 'LumaScramSha512Mechanism(channelBindingStore: channelBindingStore)' Sources/Shared/XMPP/XMPPService.swift || {
   echo "SCRAM-SHA-512 must be registered ahead of Martin's mechanisms"
   exit 1
 }

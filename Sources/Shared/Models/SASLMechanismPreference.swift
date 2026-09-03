@@ -33,6 +33,10 @@ enum SASLMechanismPreference {
         }
     }
 
+    /// Mechanisms that send credentials in a way a TLS MITM can replay or
+    /// read directly; shown with a warning on the server-information screen.
+    static let weakMechanisms: Set<String> = ["PLAIN", "OAUTHBEARER"]
+
     /// True when `mechanism` is the strongest one available among
     /// `offered`: the server offers nothing better than the chosen one.
     static func isStrongestAvailable(_ mechanism: String, among offered: [String]) -> Bool {

@@ -280,6 +280,9 @@ final class XMPPService {
     /// Mechanisms advertised in the stream features (classic SASL + SASL2),
     /// shown on the server-information screen.
     private var advertisedSASLMechanisms: [String] = []
+    /// SASL2 (RFC 9050) mechanisms from the `<authentication/>` stream
+    /// feature, shown as a dedicated list on the server-information screen.
+    private var advertisedSASL2Mechanisms: [String] = []
     private var cancellables: Set<AnyCancellable> = []
     private var account: AccountConfiguration?
     private var archiveSyncStarted = false
@@ -435,6 +438,7 @@ final class XMPPService {
         tlsProbeTask = nil
         channelBindingStore.reset()
         advertisedSASLMechanisms = []
+        advertisedSASL2Mechanisms = []
 
         let account = try account.validated()
         self.account = account
@@ -1628,6 +1632,38 @@ final class XMPPService {
                 .filter { $0.name == "mechanism" }
                 .compactMap { $0.value } ?? []
         }
+        // Same fallback pattern for SASL2 mechanisms, channel-binding types
+        // and XEP-0474: prefer the values captured from the pre-auth stream
+        // features, and only fall back to the live features element when the
+        // capture never ran (e.g. the session was resumed without a fresh
+        // login).
+        let sasl2ForDisplay: [String]
+        if !advertisedSASL2Mechanisms.isEmpty {
+            sasl2ForDisplay = advertisedSASL2Mechanisms
+        } else {
+            sasl2ForDisplay = streamFeaturesElement?
+                .findChild(name: "authentication", xmlns: "urn:xmpp:sasl:2")?
+                .children
+                .filter { $0.name == "mechanism" }
+                .compactMap { $0.value } ?? []
+        }
+        let channelBindingTypesForDisplay: [String]
+        if !channelBindingStore.advertisedChannelBindingTypes.isEmpty {
+            channelBindingTypesForDisplay = Array(
+                channelBindingStore.advertisedChannelBindingTypes
+            ).sorted()
+        } else {
+            channelBindingTypesForDisplay = streamFeaturesElement?
+                .findChild(name: "sasl-channel-binding", xmlns: "urn:xmpp:sasl-cb:0")?
+                .children
+                .filter { $0.name == "channel-binding" }
+                .compactMap { $0.getAttribute("type") } ?? []
+        }
+        // XEP-0474 support is detected during the SCRAM exchange: the server
+        // includes its downgrade-protection hash in the `h` attribute of the
+        // server-first message.
+        let downgradeProtectionForDisplay = channelBindingStore.isDowngradeProtectionDetected
+
         let supportsCSI = streamFeaturesElement?
             .findChild(name: "csi", xmlns: "urn:xmpp:csi:0") != nil
         let supportsRosterVersioning = streamFeaturesElement?
@@ -1685,6 +1721,14 @@ final class XMPPService {
                 received: stats.received
             ),
             saslMethods: saslMechanisms,
+            sasl2Methods: sasl2ForDisplay,
+            channelBindingTypes: channelBindingTypesForDisplay,
+            usedChannelBindingType:
+                (negotiatedSASLMechanism?.hasSuffix("-PLUS") == true)
+                ? channelBindingStore.preferredChannelBindingType
+                : nil,
+            supportsSCRAMDowngradeProtection: downgradeProtectionForDisplay,
+            usedSASLMechanism: negotiatedSASLMechanism,
             tlsVersion: tlsVersion,
             tlsCipher: negotiatedTLSCipher,
             saslMechanism: displaySASLMechanism,
@@ -1782,6 +1826,22 @@ final class XMPPService {
         // Registered before SaslModule so the raw RFC 6120 failure condition
         // is captured before Martin collapses it into SaslError.
         saslFailureModule = client.modulesManager.register(LumaSaslFailureModule())
+        // Watches the raw SASL <challenge/> for the XEP-0474 `h=` attribute so
+        // the server screen can report downgrade protection regardless of the
+        // SCRAM mechanism implementation in use.
+        _ = client.modulesManager.register(
+            LumaSaslChallengeModule { [weak self] challenge in
+                guard let data = Data(base64Encoded: challenge),
+                    let text = String(data: data, encoding: .utf8),
+                    let parsed = try? SCRAMSHA512.parseServerFirst(
+                        text,
+                        expectedNoncePrefix: ""
+                    ),
+                    parsed.downgradeProtectionHash != nil
+                else { return }
+                self?.channelBindingStore.markDowngradeProtectionDetected()
+            }
+        )
         // Channel-binding SCRAM first (tls-exporter / tls-server-end-point
         // over the live TLS 1.3 connection), then SCRAM-SHA-512: Martin only
         // ships SHA-1/SHA-256, while modern servers prefer SHA-512. A
@@ -1800,7 +1860,10 @@ final class XMPPService {
             LumaScramPlusMechanism(hash: .sha512, channelBindingStore: channelBindingStore),
             first: true
         )
-        sasl.addMechanism(LumaScramSha512Mechanism(), first: true)
+        sasl.addMechanism(
+            LumaScramSha512Mechanism(channelBindingStore: channelBindingStore),
+            first: true
+        )
         _ = client.modulesManager.register(ResourceBinderModule())
         _ = client.modulesManager.register(SessionEstablishmentModule())
         _ = client.modulesManager.register(
@@ -4202,15 +4265,29 @@ final class XMPPService {
             .children
             .filter { $0.name == "mechanism" }
             .compactMap { $0.value } ?? []
-        let channelBindingTypes = Set(
+        let channelBindingTypesOrdered =
             features
             .findChild(name: "sasl-channel-binding", xmlns: "urn:xmpp:sasl-cb:0")?
             .children
             .filter { $0.name == "channel-binding" }
             .compactMap { $0.getAttribute("type") } ?? []
-        )
-        channelBindingStore.setAdvertisedChannelBindingTypes(channelBindingTypes)
-        advertisedSASLMechanisms = Array(Set(mechanisms + sasl2Mechanisms))
+        let channelBindingTypes = Set(channelBindingTypesOrdered)
+        // Post-auth stream features (SMACK resumption) carry no SASL elements;
+        // refreshing the captured state from them would wipe the screen to
+        // "no methods / no channel binding". Only pre-auth features (those
+        // carrying any SASL-related element) update the state.
+        let hasSASLElements = !mechanisms.isEmpty
+            || !sasl2Mechanisms.isEmpty
+            || !channelBindingTypes.isEmpty
+        if hasSASLElements {
+            channelBindingStore.setAdvertisedChannelBindingTypes(channelBindingTypes)
+            channelBindingStore.setSASLContext(
+                mechanisms: mechanisms,
+                channelBindingTypes: channelBindingTypesOrdered
+            )
+            advertisedSASLMechanisms = Array(Set(mechanisms + sasl2Mechanisms))
+            advertisedSASL2Mechanisms = sasl2Mechanisms
+        }
         // Record the mechanism the SASL layer picks for this connection: the
         // strongest password-based one the server advertises
         // (SCRAM-*-PLUS > SCRAM-SHA-512 > … > PLAIN). Keep the previous value

@@ -83,6 +83,14 @@ final class SASLMechanismPreferenceTests: XCTestCase {
         )
     }
 
+    func testWeakMechanismsAreFlagged() {
+        XCTAssertTrue(SASLMechanismPreference.weakMechanisms.contains("PLAIN"))
+        XCTAssertTrue(SASLMechanismPreference.weakMechanisms.contains("OAUTHBEARER"))
+        XCTAssertFalse(SASLMechanismPreference.weakMechanisms.contains("SCRAM-SHA-1"))
+        XCTAssertFalse(SASLMechanismPreference.weakMechanisms.contains("SCRAM-SHA-512-PLUS"))
+        XCTAssertFalse(SASLMechanismPreference.weakMechanisms.contains("EXTERNAL"))
+    }
+
     func testPlusVariantsSkippedWithoutChannelBinding() {
         let offered = ["SCRAM-SHA-512-PLUS", "SCRAM-SHA-512", "PLAIN"]
         XCTAssertEqual(

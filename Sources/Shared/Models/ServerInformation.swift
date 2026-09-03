@@ -72,6 +72,20 @@ struct ServerInformation: Equatable, Sendable {
     let externalServices: [ExternalService]
     let connectionStats: ConnectionStats
     let saslMethods: [String]
+    /// SASL2 (RFC 9050) mechanisms advertised in `<authentication/>`.
+    let sasl2Methods: [String]
+    /// XEP-0440 channel-binding types advertised by the server, used to
+    /// detect MITM attacks on the TLS layer during SCRAM-PLUS.
+    let channelBindingTypes: [String]
+    /// The channel-binding type actually used for this connection's SASL
+    /// exchange, when a -PLUS mechanism was selected.
+    let usedChannelBindingType: String?
+    /// True when the server included its XEP-0474 downgrade-protection
+    /// hash in the SCRAM exchange (`h` attribute of the server-first message).
+    let supportsSCRAMDowngradeProtection: Bool
+    /// Raw name of the SASL mechanism used for this connection's auth
+    /// (without the channel-binding suffix), highlighted in the method lists.
+    let usedSASLMechanism: String?
     /// TLS version negotiated with the server during this connection
     /// (probed from a parallel handshake when the library does not expose it).
     let tlsVersion: String?
@@ -156,8 +170,10 @@ struct ServerInformation: Equatable, Sendable {
             ),
             Capability(
                 title: "XEP-0474 SASL SCRAM Downgrade Protection",
-                detail: "Защита SASL/SASL2-рукопожатия от понижения метода и channel-binding. Определяется во время SCRAM-аутентификации, а не рекламируется статически.",
-                status: .normal
+                detail: supportsSCRAMDowngradeProtection
+                    ? "Сервер включил downgrade-protection hash в SCRAM-обмен (атрибут h): списки SASL-механизмов и channel-binding защищены от подмены MITM."
+                    : "Сервер не включил downgrade-protection hash в SCRAM-обмен (или вход выполнен через PLAIN): списки механизмов и channel-binding не защищены от подмены.",
+                status: supportsSCRAMDowngradeProtection ? .success : .error
             ),
         ]
     }

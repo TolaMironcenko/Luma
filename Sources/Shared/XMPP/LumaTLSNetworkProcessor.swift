@@ -25,6 +25,11 @@ final class LumaChannelBindingStore: @unchecked Sendable {
     private let lock = NSLock()
     private var tlsState: LumaTLSState?
     private var advertisedTypes: Set<String> = []
+    /// Ordered copies of the advertised SASL mechanism and channel-binding
+    /// lists — XEP-0474 hashes them in advertisement order.
+    private var mechanismsOrdered: [String] = []
+    private var channelBindingTypesOrdered: [String] = []
+    private var downgradeProtectionDetected = false
 
     func setTLSState(_ state: LumaTLSState) {
         lock.lock()
@@ -38,10 +43,49 @@ final class LumaChannelBindingStore: @unchecked Sendable {
         lock.unlock()
     }
 
+    /// Records the advertised lists for the XEP-0474 downgrade-protection
+    /// hash and the server-information screen.
+    func setSASLContext(
+        mechanisms: [String],
+        channelBindingTypes: [String]
+    ) {
+        lock.lock()
+        mechanismsOrdered = mechanisms
+        channelBindingTypesOrdered = channelBindingTypes
+        lock.unlock()
+    }
+
+    func markDowngradeProtectionDetected() {
+        lock.lock()
+        downgradeProtectionDetected = true
+        lock.unlock()
+    }
+
+    var isDowngradeProtectionDetected: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return downgradeProtectionDetected
+    }
+
+    var advertisedSASLMechanismsOrdered: [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return mechanismsOrdered
+    }
+
+    var advertisedChannelBindingTypesOrdered: [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return channelBindingTypesOrdered
+    }
+
     func reset() {
         lock.lock()
         tlsState = nil
         advertisedTypes = []
+        mechanismsOrdered = []
+        channelBindingTypesOrdered = []
+        downgradeProtectionDetected = false
         lock.unlock()
     }
 
@@ -86,6 +130,13 @@ final class LumaChannelBindingStore: @unchecked Sendable {
 
     var canUseChannelBinding: Bool {
         preferredChannelBindingType != nil
+    }
+
+    /// Channel-binding types the server advertised in its stream features.
+    var advertisedChannelBindingTypes: Set<String> {
+        lock.lock()
+        defer { lock.unlock() }
+        return advertisedTypes
     }
 }
 

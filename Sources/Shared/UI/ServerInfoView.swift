@@ -82,6 +82,18 @@ struct ServerInfoView: View {
             Section("Методы аутентификации SASL, которые поддерживает ваш сервер.") {
                 saslEntries(info)
             }
+            Section("Методы аутентификации SASL2 (RFC 9050), которые поддерживает ваш сервер.") {
+                sasl2Entries(info)
+            }
+            Section {
+                channelBindingEntries(info)
+            } header: {
+                Text("Привязка канала (channel binding), которую поддерживает ваш сервер.")
+            } footer: {
+                Text(
+                    "Channel binding связывает SASL-обмен с TLS-каналом: MITM-ретрансляция не сможет подменить соединение. Зелёным отмечен тип, использованный в текущем соединении, оранжевым — типы, которые Luma не поддерживает."
+                )
+            }
         } else if isLoading {
             Section {
                 HStack(spacing: 12) {
@@ -233,11 +245,99 @@ struct ServerInfoView: View {
             ForEach(info.saslMethods, id: \.self) { method in
                 entry(
                     title: "Метод: \(method)",
-                    detail: saslDescription(method),
-                    status: method == "PLAIN" ? .warning : .normal
+                    detail: method == info.usedSASLMechanism
+                        ? "Используется в текущем соединении. " + saslDescription(method)
+                        : saslDescription(method),
+                    status: method == info.usedSASLMechanism
+                        ? .success
+                        : (SASLMechanismPreference.weakMechanisms.contains(method)
+                            ? .warning
+                            : .normal)
                 )
             }
         }
+    }
+
+    @ViewBuilder
+    private func sasl2Entries(_ info: ServerInformation) -> some View {
+        if info.sasl2Methods.isEmpty {
+            entry(
+                title: "Нет",
+                detail: "Сервер не объявил методы аутентификации SASL2 (RFC 9050).",
+                status: .normal
+            )
+        } else {
+            ForEach(info.sasl2Methods, id: \.self) { method in
+                entry(
+                    title: "Метод: \(method)",
+                    detail: method == info.usedSASLMechanism
+                        ? "Используется в текущем соединении. " + sasl2Description(method)
+                        : sasl2Description(method),
+                    status: method == info.usedSASLMechanism
+                        ? .success
+                        : (SASLMechanismPreference.weakMechanisms.contains(method)
+                            ? .warning
+                            : .normal)
+                )
+            }
+        }
+    }
+
+    private func sasl2Description(_ method: String) -> String {
+        switch method {
+        case "PLAIN":
+            return "Отправляет пароль открытым текстом (шифруется только TLS), не очень безопасно."
+        case "OAUTHBEARER":
+            return "OAuth 2.0 bearer-токен: пароль не передаётся, но сам токен — bearer-секрет, не очень безопасно."
+        case "EXTERNAL":
+            return "Использует TLS-клиентские сертификаты для аутентификации."
+        case let method where method.hasPrefix("SCRAM-") && method.hasSuffix("-PLUS"):
+            return "Salted Challenge Response Authentication Mechanism с channel-binding."
+        case let method where method.hasPrefix("SCRAM-"):
+            return "Salted Challenge Response Authentication Mechanism на указанном хэше."
+        default:
+            return "Неизвестный метод аутентификации."
+        }
+    }
+
+    /// Channel-binding types Luma can actually produce binding data for.
+    private static let supportedChannelBindingTypes: Set<String> = [
+        "tls-exporter", "tls-server-end-point",
+    ]
+
+    @ViewBuilder
+    private func channelBindingEntries(_ info: ServerInformation) -> some View {
+        if info.channelBindingTypes.isEmpty {
+            entry(
+                title: "Нет",
+                detail: "Сервер не рекламирует channel-binding типы (XEP-0440): SASL-обмен не детектирует MITM-атаку на TLS-слой.",
+                status: .warning
+            )
+        } else {
+            ForEach(info.channelBindingTypes, id: \.self) { type in
+                let used = info.usedChannelBindingType == type
+                let supported = Self.supportedChannelBindingTypes.contains(type)
+                entry(
+                    title: "Тип: \(type)",
+                    detail: channelBindingDescription(type, used: used, supported: supported),
+                    status: used ? .success : (supported ? .normal : .warning)
+                )
+            }
+        }
+    }
+
+    private func channelBindingDescription(
+        _ type: String,
+        used: Bool,
+        supported: Bool
+    ) -> String {
+        if used {
+            return "Используется в текущем соединении."
+        }
+        if supported {
+            return "Luma поддерживает этот тип привязки."
+        }
+        return "Luma не поддерживает этот тип привязки."
     }
 
     private func saslDescription(_ method: String) -> String {

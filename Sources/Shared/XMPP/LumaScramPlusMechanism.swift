@@ -93,6 +93,40 @@ enum SCRAMHash {
     }
 }
 
+/// XEP-0474 SASL SCRAM Downgrade Protection: the hash both sides include in
+/// the SCRAM exchange (server `h` / client `x` attributes). Per §5.1 the
+/// input is the server-advertised SASL mechanisms SORTED with i;octet
+/// collation and joined with 0x1E; when the server also advertised
+/// channel-binding types, a 0x1F delimiter followed by the sorted
+/// channel-binding types joined with 0x1E. The digest is the SCRAM hash of
+/// the negotiated mechanism. A mismatch means a MITM tampered with the
+/// advertised lists.
+enum SCRAMDowngradeProtection {
+    static func hash(
+        mechanisms: [String],
+        channelBindingTypes: [String],
+        using hash: SCRAMHash
+    ) -> Data {
+        // "i;octet" collation = byte-wise comparison; for these pure-ASCII
+        // identifiers plain lexicographic sorting matches it.
+        let sortedMechanisms = mechanisms.sorted()
+        let sortedBindings = channelBindingTypes.sorted()
+        var input = Data()
+        for (index, mechanism) in sortedMechanisms.enumerated() {
+            if index > 0 { input.append(0x1E) }
+            input.append(contentsOf: mechanism.utf8)
+        }
+        if !sortedBindings.isEmpty {
+            input.append(0x1F)
+            for (index, type) in sortedBindings.enumerated() {
+                if index > 0 { input.append(0x1E) }
+                input.append(contentsOf: type.utf8)
+            }
+        }
+        return hash.hash(data: input)
+    }
+}
+
 /// Pure SCRAM channel-binding exchange math (RFC 5802 + RFC 9266): given
 /// the fixed inputs of one exchange it produces the wire messages and the
 /// expected server signature. Kept independent of Martin's SaslMechanism
@@ -116,7 +150,10 @@ struct SCRAMPlusExchange {
         (gs2Header.data(using: .utf8) ?? Data()) + channelBindingData
     }
 
-    func clientFinalMessage(serverFirst: String) throws -> String {
+    func clientFinalMessage(
+        serverFirst: String,
+        downgradeProtectionHashBase64: String? = nil
+    ) throws -> String {
         let parsed = try SCRAMSHA512.parseServerFirst(
             serverFirst,
             expectedNoncePrefix: clientNonce
@@ -126,9 +163,15 @@ struct SCRAMPlusExchange {
             salt: parsed.salt,
             iterations: parsed.iterations
         )
-        let finalWithoutProof =
-            "c=\(channelBindingInput.base64EncodedString()),r=\(parsed.nonce)"
-        let authMessage = authMessageString(serverFirst: serverFirst, parsed: parsed)
+        let finalWithoutProof = finalWithoutProofString(
+            parsed: parsed,
+            downgradeProtectionHashBase64: downgradeProtectionHashBase64
+        )
+        let authMessage = authMessageString(
+            serverFirst: serverFirst,
+            parsed: parsed,
+            downgradeProtectionHashBase64: downgradeProtectionHashBase64
+        )
         let clientKey = hash.hmac(key: saltedPassword, data: Data("Client Key".utf8))
         let storedKey = hash.hash(data: clientKey)
         let signature = hash.hmac(key: storedKey, data: Data(authMessage.utf8))
@@ -136,7 +179,10 @@ struct SCRAMPlusExchange {
         return finalWithoutProof + ",p=" + proof.base64EncodedString()
     }
 
-    func expectedServerSignature(serverFirst: String) throws -> Data {
+    func expectedServerSignature(
+        serverFirst: String,
+        downgradeProtectionHashBase64: String? = nil
+    ) throws -> Data {
         let parsed = try SCRAMSHA512.parseServerFirst(
             serverFirst,
             expectedNoncePrefix: clientNonce
@@ -146,17 +192,36 @@ struct SCRAMPlusExchange {
             salt: parsed.salt,
             iterations: parsed.iterations
         )
-        let authMessage = authMessageString(serverFirst: serverFirst, parsed: parsed)
+        let authMessage = authMessageString(
+            serverFirst: serverFirst,
+            parsed: parsed,
+            downgradeProtectionHashBase64: downgradeProtectionHashBase64
+        )
         let serverKey = hash.hmac(key: saltedPassword, data: Data("Server Key".utf8))
         return hash.hmac(key: serverKey, data: Data(authMessage.utf8))
     }
 
+    private func finalWithoutProofString(
+        parsed: SCRAMSHA512.ServerFirst,
+        downgradeProtectionHashBase64: String?
+    ) -> String {
+        var result =
+            "c=\(channelBindingInput.base64EncodedString()),r=\(parsed.nonce)"
+        if let downgradeProtectionHashBase64 {
+            result += ",x=\(downgradeProtectionHashBase64)"
+        }
+        return result
+    }
+
     private func authMessageString(
         serverFirst: String,
-        parsed: SCRAMSHA512.ServerFirst
+        parsed: SCRAMSHA512.ServerFirst,
+        downgradeProtectionHashBase64: String?
     ) -> String {
-        let finalWithoutProof =
-            "c=\(channelBindingInput.base64EncodedString()),r=\(parsed.nonce)"
+        let finalWithoutProof = finalWithoutProofString(
+            parsed: parsed,
+            downgradeProtectionHashBase64: downgradeProtectionHashBase64
+        )
         return clientFirstMessageBare + "," + serverFirst + "," + finalWithoutProof
     }
 
@@ -184,6 +249,9 @@ final class LumaScramPlusMechanism: SaslMechanism {
     private var stage = 0
     private var exchange: SCRAMPlusExchange?
     private var serverFirst: String?
+    /// XEP-0474: our own downgrade-protection hash sent in the `x`
+    /// attribute once the server has presented its `h` attribute.
+    private var downgradeHashBase64: String?
 
     init(hash: SCRAMHash, channelBindingStore: LumaChannelBindingStore) {
         self.hash = hash
@@ -197,6 +265,7 @@ final class LumaScramPlusMechanism: SaslMechanism {
         stage = 0
         exchange = nil
         serverFirst = nil
+        downgradeHashBase64 = nil
     }
 
     func isAllowedToUse(_ context: Context) -> Bool {
@@ -243,7 +312,34 @@ final class LumaScramPlusMechanism: SaslMechanism {
                 throw ClientSaslException.badChallenge(msg: "Invalid challenge")
             }
             serverFirst = decodedServerFirst
-            let final = try exchange.clientFinalMessage(serverFirst: decodedServerFirst)
+            // XEP-0474: verify the server's `h` downgrade-protection hash over
+            // the advertised mechanism and channel-binding lists, and answer
+            // with our own hash in `x`. A mismatch means a MITM tampered with
+            // the advertised lists.
+            var downgradeHash: String?
+            if let serverHash = try SCRAMSHA512.parseServerFirst(
+                decodedServerFirst,
+                expectedNoncePrefix: exchange.clientNonce
+            ).downgradeProtectionHash {
+                channelBindingStore.markDowngradeProtectionDetected()
+                let expected = SCRAMDowngradeProtection.hash(
+                    mechanisms: channelBindingStore.advertisedSASLMechanismsOrdered,
+                    channelBindingTypes: channelBindingStore.advertisedChannelBindingTypesOrdered,
+                    using: hash
+                )
+                let expectedBase64 = expected.base64EncodedString()
+                guard expectedBase64 == serverHash else {
+                    throw ClientSaslException.badChallenge(
+                        msg: "SCRAM downgrade protection hash mismatch (possible MITM)"
+                    )
+                }
+                downgradeHash = expectedBase64
+            }
+            downgradeHashBase64 = downgradeHash
+            let final = try exchange.clientFinalMessage(
+                serverFirst: decodedServerFirst,
+                downgradeProtectionHashBase64: downgradeHash
+            )
             stage = 2
             return final.data(using: .utf8)?.base64EncodedString()
 
@@ -257,7 +353,10 @@ final class LumaScramPlusMechanism: SaslMechanism {
             else {
                 throw ClientSaslException.badChallenge(msg: "Invalid final challenge")
             }
-            let expected = try exchange.expectedServerSignature(serverFirst: serverFirst)
+            let expected = try exchange.expectedServerSignature(
+                serverFirst: serverFirst,
+                downgradeProtectionHashBase64: downgradeHashBase64
+            )
             guard value == expected else {
                 throw ClientSaslException.invalidServerSignature
             }

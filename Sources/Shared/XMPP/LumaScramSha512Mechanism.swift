@@ -11,6 +11,9 @@ enum SCRAMSHA512 {
         let nonce: String
         let salt: Data
         let iterations: Int
+        /// XEP-0474: base64 downgrade-protection hash in the optional `h=`
+        /// SCRAM attribute, when the server supports the extension.
+        let downgradeProtectionHash: String?
     }
 
     private static let nonceAlphabet = Array(
@@ -25,7 +28,7 @@ enum SCRAMSHA512 {
         _ message: String,
         expectedNoncePrefix: String
     ) throws -> ServerFirst {
-        let pattern = #"^(?:m=[^\000=]+,)?r=([\x21-\x2B\x2D-\x7E]+),s=([a-zA-Z0-9/+=]+),i=(\d+)(?:,.*)?$"#
+        let pattern = #"^(?:m=[^\000=]+,)?r=([\x21-\x2B\x2D-\x7E]+),s=([a-zA-Z0-9/+=]+),i=(\d+)(?:,h=([a-zA-Z0-9/+=]+))?(?:,.*)?$"#
         guard let regex = try? NSRegularExpression(pattern: pattern) else {
             throw ClientSaslException.badChallenge(msg: "Failed to parse challenge")
         }
@@ -39,12 +42,23 @@ enum SCRAMSHA512 {
         }
         let nonce = String(message[nonceRange])
         let iterations = Int(message[iterationsRange]) ?? 0
+        let downgradeProtectionHash: String?
+        if let hashRange = Range(match.range(at: 4), in: message) {
+            downgradeProtectionHash = String(message[hashRange])
+        } else {
+            downgradeProtectionHash = nil
+        }
         guard nonce.hasPrefix(expectedNoncePrefix),
               let salt = Data(base64Encoded: String(message[saltRange])),
               iterations > 0 else {
             throw ClientSaslException.badChallenge(msg: "Invalid challenge")
         }
-        return ServerFirst(nonce: nonce, salt: salt, iterations: iterations)
+        return ServerFirst(
+            nonce: nonce,
+            salt: salt,
+            iterations: iterations,
+            downgradeProtectionHash: downgradeProtectionHash
+        )
     }
 
     /// PBKDF2-HMAC-SHA-512 (RFC 5802 \"Hi\" function).
@@ -114,11 +128,20 @@ final class LumaScramSha512Mechanism: SaslMechanism {
     let name = "SCRAM-SHA-512"
     private(set) var status: SaslMechanismStatus = .new
 
+    /// Optional channel-binding store: when present the mechanism verifies
+    /// the XEP-0474 downgrade-protection hash from the server and answers
+    /// with its own hash.
+    private let channelBindingStore: LumaChannelBindingStore?
+
     private var stage = 0
     private var clientNonce = ""
     private var clientFirstMessageBare = ""
     private var authMessage = ""
     private var saltedPassword: [UInt8] = []
+
+    init(channelBindingStore: LumaChannelBindingStore? = nil) {
+        self.channelBindingStore = channelBindingStore
+    }
 
     func reset(scopes: Set<ResetableScope>) {
         guard scopes.contains(.stream) else { return }
@@ -168,7 +191,30 @@ final class LumaScramSha512Mechanism: SaslMechanism {
                 serverFirst,
                 expectedNoncePrefix: clientNonce
             )
+            // XEP-0474: the optional `h` attribute carries the server's
+            // downgrade-protection hash over the advertised mechanism and
+            // channel-binding lists. Verify it (a mismatch means a MITM
+            // tampered with the lists) and answer with our own hash in `x`.
+            var downgradeHashBase64: String?
+            if let serverHash = parsed.downgradeProtectionHash {
+                channelBindingStore?.markDowngradeProtectionDetected()
+                let mechanisms = channelBindingStore?.advertisedSASLMechanismsOrdered ?? []
+                let bindingTypes = channelBindingStore?.advertisedChannelBindingTypesOrdered ?? []
+                let expected = SCRAMDowngradeProtection.hash(
+                    mechanisms: mechanisms,
+                    channelBindingTypes: bindingTypes,
+                    using: .sha512
+                )
+                let expectedBase64 = expected.base64EncodedString()
+                guard expectedBase64 == serverHash else {
+                    throw ClientSaslException.badChallenge(
+                        msg: "SCRAM downgrade protection hash mismatch (possible MITM)"
+                    )
+                }
+                downgradeHashBase64 = expectedBase64
+            }
             let clientFinalWithoutProof = "c=biws,r=\(parsed.nonce)"
+                + (downgradeHashBase64.map { ",x=\($0)" } ?? "")
             authMessage = clientFirstMessageBare + "," + serverFirst + "," + clientFinalWithoutProof
             saltedPassword = SCRAMSHA512.saltedPassword(
                 password: password,
