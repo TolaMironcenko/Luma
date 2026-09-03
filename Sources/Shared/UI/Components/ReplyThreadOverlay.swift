@@ -345,3 +345,27 @@ private struct ReplyThreadMessageRow: View {
         return "\(state) \(value)"
     }
 }
+
+#Preview {
+    ReplyThreadOverlay(
+        model: PreviewSupport.model,
+        rootMessage: PreviewSupport.message(
+            body: "Кто пойдёт на конференцию?",
+            timestamp: Date().addingTimeInterval(-3_600)
+        ),
+        replies: [
+            PreviewSupport.message(
+                id: "preview-reply-1",
+                body: "Я пойду!",
+                timestamp: Date().addingTimeInterval(-2_400)
+            ),
+            PreviewSupport.message(
+                id: "preview-reply-2",
+                body: "Я тоже, но опоздаю на полчаса",
+                timestamp: Date().addingTimeInterval(-1_800)
+            ),
+        ],
+        selectedReplyID: "preview-reply-1",
+        onDismiss: {}
+    )
+}

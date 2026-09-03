@@ -59,11 +59,12 @@ struct MediaViewer: View {
                         .ignoresSafeArea(edges: .bottom)
 
                     VStack(spacing: 0) {
+                        Spacer()
                         HStack {
-                            Text(item.title)
-                                .font(.headline)
-                                .foregroundStyle(.white)
-                                .lineLimit(1)
+//                            Text(item.title)
+//                                .font(.headline)
+//                                .foregroundStyle(.white)
+//                                .lineLimit(1)
 
                             Spacer()
 
@@ -88,8 +89,6 @@ struct MediaViewer: View {
                             )
                             .ignoresSafeArea()
                         )
-
-                        Spacer()
                     }
                 }
                 .offset(y: dragOffset)
@@ -397,4 +396,16 @@ private struct ZoomablePhotoView: View {
             }
         }
     }
+}
+
+#Preview {
+    MediaViewer(
+        item: MediaViewerItem(
+            id: "preview",
+            url: URL(fileURLWithPath: "/tmp/preview-photo.jpg"),
+            kind: .photo,
+            title: "IMG_1234.jpg"
+        ),
+        onClose: {}
+    )
 }

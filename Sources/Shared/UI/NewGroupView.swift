@@ -120,3 +120,7 @@ struct NewGroupView: View {
             .filter { !$0.isEmpty }
     }
 }
+
+#Preview {
+    NewGroupView(model: PreviewSupport.model)
+}

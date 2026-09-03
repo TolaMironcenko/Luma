@@ -2649,3 +2649,7 @@ private func writePickedImageData(_ data: Data) throws -> URL {
         throw error
     }
 }
+
+#Preview {
+    PreviewSupport.chatPreview()
+}

@@ -131,3 +131,12 @@ struct PhotoAttachmentPreview: View {
         }
     }
 }
+
+#Preview {
+    PhotoAttachmentPreview(
+        model: PreviewSupport.model,
+        message: PreviewSupport.photoMessage(),
+        onFallbackTap: {}
+    )
+    .padding()
+}

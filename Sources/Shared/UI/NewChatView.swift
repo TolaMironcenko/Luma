@@ -77,3 +77,7 @@ struct NewChatView: View {
         }
     }
 }
+
+#Preview {
+    NewChatView(model: PreviewSupport.model)
+}

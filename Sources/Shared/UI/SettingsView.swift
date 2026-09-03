@@ -311,3 +311,7 @@ extension String {
         return result
     }
 }
+
+#Preview {
+    SettingsView(model: PreviewSupport.model, presentedAsTab: true)
+}

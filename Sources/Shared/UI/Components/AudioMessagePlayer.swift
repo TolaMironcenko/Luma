@@ -326,3 +326,28 @@ enum MediaTimeFormatter {
         return String(format: "%d:%02d", seconds / 60, seconds % 60)
     }
 }
+
+#Preview("Голосовое") {
+    AudioMessagePlayer(
+        model: PreviewSupport.model,
+        message: PreviewSupport.voiceMessage(),
+        onFallbackTap: {}
+    )
+    .padding()
+}
+
+#Preview("Аудиофайл") {
+    AudioMessagePlayer(
+        model: PreviewSupport.model,
+        message: PreviewSupport.message(
+            body: "",
+            kind: .audio,
+            localFilename: "track.mp3",
+            mimeType: "audio/mpeg",
+            duration: 214,
+            byteCount: 8_550_000
+        ),
+        onFallbackTap: {}
+    )
+    .padding()
+}

@@ -91,3 +91,7 @@ struct RootView: View {
         )
     }
 }
+
+#Preview {
+    RootView(model: PreviewSupport.model)
+}

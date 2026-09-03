@@ -149,3 +149,12 @@ struct VideoAttachmentPreview: View {
         }
     }
 }
+
+#Preview {
+    VideoAttachmentPreview(
+        model: PreviewSupport.model,
+        message: PreviewSupport.videoMessage(),
+        onFallbackTap: {}
+    )
+    .padding()
+}

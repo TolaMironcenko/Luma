@@ -324,3 +324,11 @@ struct AppLockPasscodeSheet: View {
         }
     }
 }
+
+#Preview("Экран блокировки") {
+    AppLockView(model: PreviewSupport.model)
+}
+
+#Preview("Настройка пароля") {
+    AppLockPasscodeSheet(model: PreviewSupport.model, mode: .setup)
+}

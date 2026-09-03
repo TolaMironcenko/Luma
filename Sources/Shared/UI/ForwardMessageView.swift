@@ -152,3 +152,19 @@ struct ForwardMessageView: View {
         return "\(count) \(word)"
     }
 }
+
+#Preview {
+    ForwardMessageView(
+        model: PreviewSupport.model,
+        messages: [
+            PreviewSupport.message(body: "Привет! Как дела?"),
+            PreviewSupport.message(
+                senderJID: "me@example.org",
+                body: "Созвонимся вечером?",
+                direction: .outgoing,
+                delivery: .sent
+            ),
+        ]
+    )
+    .modelContainer(PreviewSupport.container)
+}

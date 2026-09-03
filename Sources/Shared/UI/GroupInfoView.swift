@@ -139,3 +139,16 @@ struct GroupInfoView: View {
         }
     }
 }
+
+#Preview {
+    GroupInfoView(
+        model: PreviewSupport.model,
+        conversation: PreviewSupport.conversation(
+            jid: "team@conference.example.org",
+            displayName: "Команда Luma",
+            kind: .group,
+            isGroupJoined: true,
+            occupantCount: 7
+        )
+    )
+}

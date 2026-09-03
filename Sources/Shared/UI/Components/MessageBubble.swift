@@ -816,3 +816,74 @@ extension View {
         #endif
     }
 }
+
+#Preview("Входящее") {
+    MessageBubble(
+        model: PreviewSupport.model,
+        message: PreviewSupport.message(),
+        isSelectionMode: false,
+        isSelected: false,
+        onAttachmentTap: {},
+        onEdit: {},
+        onReply: {},
+        onForward: {},
+        onRetry: {},
+        onToggleSelection: {},
+        onBeginSelection: {},
+        onRetract: {},
+        onDelete: {},
+        onReplyTap: { _ in },
+        onReact: { _ in },
+        onReactPicker: {}
+    )
+    .padding()
+}
+
+#Preview("Исходящее") {
+    MessageBubble(
+        model: PreviewSupport.model,
+        message: PreviewSupport.message(
+            senderJID: "me@example.org",
+            body: "Отлично! Созвонимся вечером?",
+            direction: .outgoing,
+            delivery: .delivered
+        ),
+        isSelectionMode: false,
+        isSelected: false,
+        onAttachmentTap: {},
+        onEdit: {},
+        onReply: {},
+        onForward: {},
+        onRetry: {},
+        onToggleSelection: {},
+        onBeginSelection: {},
+        onRetract: {},
+        onDelete: {},
+        onReplyTap: { _ in },
+        onReact: { _ in },
+        onReactPicker: {}
+    )
+    .padding()
+}
+
+#Preview("Фото") {
+    MessageBubble(
+        model: PreviewSupport.model,
+        message: PreviewSupport.photoMessage(),
+        isSelectionMode: false,
+        isSelected: false,
+        onAttachmentTap: {},
+        onEdit: {},
+        onReply: {},
+        onForward: {},
+        onRetry: {},
+        onToggleSelection: {},
+        onBeginSelection: {},
+        onRetract: {},
+        onDelete: {},
+        onReplyTap: { _ in },
+        onReact: { _ in },
+        onReactPicker: {}
+    )
+    .padding()
+}

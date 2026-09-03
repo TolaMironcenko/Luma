@@ -90,3 +90,7 @@ struct EmojiPickerView: View {
         }
     }
 }
+
+#Preview {
+    EmojiPickerView { _ in }
+}

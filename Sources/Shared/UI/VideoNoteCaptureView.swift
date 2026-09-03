@@ -190,3 +190,7 @@ struct CameraPreview: NSViewRepresentable {
     }
 }
 #endif
+
+#Preview {
+    VideoNoteCaptureView { _ in }
+}

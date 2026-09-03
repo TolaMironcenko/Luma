@@ -396,3 +396,9 @@ private extension ServerInformation.CapabilityStatus {
         }
     }
 }
+
+#Preview {
+    NavigationStack {
+        ServerInfoView(model: PreviewSupport.model)
+    }
+}

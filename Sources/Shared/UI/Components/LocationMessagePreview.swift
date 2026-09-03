@@ -61,3 +61,9 @@ struct LocationMessagePreview: View {
         item.openInMaps()
     }
 }
+
+#Preview {
+    LocationMessagePreview(
+        location: GeoLocation(latitude: 55.7558, longitude: 37.6173)!
+    )
+}

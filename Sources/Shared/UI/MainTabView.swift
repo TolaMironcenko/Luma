@@ -1033,3 +1033,7 @@ private struct ContactRow: View {
         }
     }
 #endif
+
+#Preview {
+    PreviewSupport.mainPreview()
+}

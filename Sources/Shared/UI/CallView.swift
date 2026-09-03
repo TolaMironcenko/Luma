@@ -241,3 +241,18 @@ private struct CallControlButton: View {
         .accessibilityLabel(title)
     }
 }
+
+#Preview("Входящий видеозвонок") {
+    CallView(model: PreviewSupport.model, call: PreviewSupport.callSnapshot())
+}
+
+#Preview("Аудиозвонок") {
+    CallView(
+        model: PreviewSupport.model,
+        call: PreviewSupport.callSnapshot(
+            media: [.audio],
+            phase: .connected,
+            isSpeakerEnabled: true
+        )
+    )
+}

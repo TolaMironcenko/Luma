@@ -298,3 +298,19 @@ struct AttachmentPreviewView: View {
         }
     }
 }
+
+private struct AttachmentPreviewHost: View {
+    @State private var drafts = PreviewSupport.drafts()
+
+    var body: some View {
+        AttachmentPreviewView(
+            model: PreviewSupport.model,
+            conversation: PreviewSupport.conversation(displayName: "Алиса"),
+            drafts: $drafts
+        )
+    }
+}
+
+#Preview {
+    AttachmentPreviewHost()
+}

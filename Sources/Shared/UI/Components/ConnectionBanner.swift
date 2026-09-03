@@ -36,3 +36,8 @@ struct ConnectionBanner: View {
     }
 }
 
+#Preview {
+    ConnectionBanner(model: PreviewSupport.model, text: "Чаты")
+        .padding()
+}
+

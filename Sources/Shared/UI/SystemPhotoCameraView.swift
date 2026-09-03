@@ -177,4 +177,12 @@ private enum SystemCameraError: LocalizedError {
         }
     }
 }
+
+#Preview {
+    SystemPhotoCameraView(
+        onDismissRequest: {},
+        onMedia: { _ in },
+        onCancel: {}
+    )
+}
 #endif

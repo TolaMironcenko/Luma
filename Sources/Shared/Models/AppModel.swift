@@ -12,6 +12,15 @@ enum RuntimeEnvironment {
         return environment["XCTestConfigurationFilePath"] != nil
             || environment["XCTestBundlePath"] != nil
     }
+
+    /// True inside Xcode preview canvases. The preview host launches the app
+    /// with `XCODE_RUNNING_FOR_PLAYGROUNDS=1` and shares the real app
+    /// container, so the model must not load the saved account or start the
+    /// XMPP/TLS stack there: the JIT executor interposes OpenSSL symbols onto
+    /// the system BoringSSL and any socket work crashes.
+    static var isRunningPreviews: Bool {
+        ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PLAYGROUNDS"] == "1"
+    }
 }
 
 @MainActor
@@ -144,7 +153,10 @@ final class AppModel: ObservableObject {
         // stored preferences on launch.
         appLockIsEnabled = appLock.isEnabled
         appLockBiometricIsEnabled = appLock.biometricUnlockEnabled
-        isAppLocked = appLock.isEnabled && !RuntimeEnvironment.isRunningTests
+        isAppLocked =
+            appLock.isEnabled
+            && !RuntimeEnvironment.isRunningTests
+            && !RuntimeEnvironment.isRunningPreviews
         refreshBiometricAvailability()
 
         xmpp.eventHandler = { [weak self] event in
@@ -222,7 +234,7 @@ final class AppModel: ObservableObject {
             }
         }
 
-        if !RuntimeEnvironment.isRunningTests {
+        if !RuntimeEnvironment.isRunningTests, !RuntimeEnvironment.isRunningPreviews {
             bootstrapTask = Task { [weak self] in
                 guard let self else { return }
                 await self.bootstrap()
@@ -320,7 +332,9 @@ final class AppModel: ObservableObject {
 #if DEBUG
         if applyUITestChatIfRequested() { return }
 #endif
-        guard !RuntimeEnvironment.isRunningTests else { return }
+        guard !RuntimeEnvironment.isRunningTests,
+            !RuntimeEnvironment.isRunningPreviews
+        else { return }
         guard let saved = preferences.load() else { return }
         prepareStore(for: saved.normalizedJID)
         account = saved
@@ -552,7 +566,9 @@ final class AppModel: ObservableObject {
     }
 
     func refreshBiometricAvailability() {
-        guard !RuntimeEnvironment.isRunningTests else { return }
+        guard !RuntimeEnvironment.isRunningTests,
+            !RuntimeEnvironment.isRunningPreviews
+        else { return }
         Task.detached(priority: .utility) {
             let context = LAContext()
             var error: NSError?

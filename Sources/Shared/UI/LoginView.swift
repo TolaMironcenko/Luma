@@ -83,8 +83,10 @@ struct LoginView: View {
                     #endif
                     .textContentType(.username)
                     .autocorrectionDisabled()
-                    .textFieldStyle(.roundedBorder)
+                    .textFieldStyle(.plain)
                     .disableAutocorrection(true)
+                    .padding()
+                    .glassEffect()
             }
 
             VStack(alignment: .leading, spacing: 7) {
@@ -95,9 +97,11 @@ struct LoginView: View {
                         if passwordVisible {
                             TextField("Пароль", text: $password)
                                 .textContentType(.oneTimeCode)
+                                .textFieldStyle(.plain)
                         } else {
                             SecureField("Пароль", text: $password)
                                 .textContentType(.password)
+                                .textFieldStyle(.plain)
                         }
                     }
                     .autocorrectionDisabled()
@@ -115,25 +119,35 @@ struct LoginView: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel(passwordVisible ? "Скрыть пароль" : "Показать пароль")
                 }
+                .padding()
+                .glassEffect()
             }
 
             DisclosureGroup("Дополнительные настройки", isExpanded: $showAdvanced) {
                 VStack(spacing: 14) {
                     TextField("Отображаемое имя", text: $displayName)
-                        .textFieldStyle(.roundedBorder)
+                        .textFieldStyle(.plain)
+                        .padding()
+                        .glassEffect()
                     TextField("Автоматически (Luma-XXXX)", text: $resource)
-                        .textFieldStyle(.roundedBorder)
+                        .textFieldStyle(.plain)
+                        .padding()
+                        .glassEffect()
                     Text(
                         "Оставьте пустым — Luma создаст уникальный ресурс для этого устройства, чтобы macOS и iOS не конфликтовали между собой."
                     )
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     TextField("Сервер вручную (необязательно)", text: $manualHost)
-                        .textFieldStyle(.roundedBorder)
+                        .textFieldStyle(.plain)
+                        .padding()
+                        .glassEffect()
                     TextField(
                         directTLS ? "Порт, обычно 5223" : "Порт, обычно 5222", text: $manualPort
                     )
-                    .textFieldStyle(.roundedBorder)
+                    .textFieldStyle(.plain)
+                    .padding()
+                    .glassEffect()
                     Toggle("Direct TLS", isOn: $directTLS)
                         .toggleStyle(.switch)
                     Text(
@@ -188,4 +202,8 @@ struct LoginView: View {
         )
         await model.signIn(account: account, password: password)
     }
+}
+
+#Preview {
+    LoginView(model: PreviewSupport.model)
 }

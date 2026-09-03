@@ -50,7 +50,7 @@ struct VideoNotePreview: View {
             VStack {
                 Spacer()
                 HStack {
-                    Spacer()
+//                    Spacer()
                     Text(durationText)
                         .font(.caption2.monospacedDigit().weight(.semibold))
                         .foregroundStyle(.white)
@@ -152,4 +152,13 @@ struct VideoNotePreview: View {
         }
         isPlaying.toggle()
     }
+}
+
+#Preview {
+    VideoNotePreview(
+        model: PreviewSupport.model,
+        message: PreviewSupport.videoNoteMessage(),
+        onFallbackTap: {}
+    )
+    .padding()
 }

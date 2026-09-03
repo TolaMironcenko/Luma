@@ -163,3 +163,10 @@ extension String {
         return result
     }
 }
+
+#Preview {
+    EncryptionDevicesView(
+        model: PreviewSupport.model,
+        conversation: PreviewSupport.conversation(displayName: "Алиса")
+    )
+}

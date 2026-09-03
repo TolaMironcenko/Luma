@@ -107,6 +107,7 @@
 		5875F7D2870C985287B36AFA /* MessageReplyFallbackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCAACA105F4B9699F59805F9 /* MessageReplyFallbackTests.swift */; };
 		58A606B016094F1845CB0119 /* LocationMessagePreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = B96E7970930AB7F09CB5DA9C /* LocationMessagePreview.swift */; };
 		5A5C811D7D19AE7C694273FC /* SASLMechanismPreferenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37D79A5AC35479F474FF3F44 /* SASLMechanismPreferenceTests.swift */; };
+		5C1B4AD1C5FB542B1E7154A7 /* PreviewSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 686F6A6EB3740DE94310653B /* PreviewSupport.swift */; };
 		5D80C9CBCE79DE69A7A6ABA4 /* AppLockView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B5AEFC4FD65BA34FF030467 /* AppLockView.swift */; };
 		6000FF9931D3399B53C8506C /* MainTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99F26F5B024C5B4BF74CF242 /* MainTabView.swift */; };
 		60CE79BB4D0FB53E126354AA /* GroupConversationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6773F87EE60F91BBDCA4B1F5 /* GroupConversationTests.swift */; };
@@ -123,6 +124,7 @@
 		670970182A27A26B8E44E687 /* LumaTLSNetworkProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 569F2BFFD578A23A99D73248 /* LumaTLSNetworkProcessor.swift */; };
 		67143F44FF20A87E8875CFFB /* MediaPreviewProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C0E3C6F60C3D4D6C565CA0A /* MediaPreviewProcessor.swift */; };
 		67438C8911F9B7362073B591 /* ReplyThreadOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19C556A41E640592AF6376B6 /* ReplyThreadOverlay.swift */; };
+		6826D225FFEA985B6C7AD184 /* PreviewSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 686F6A6EB3740DE94310653B /* PreviewSupport.swift */; };
 		6950D2E35897C3A6C537AE08 /* CallHistorySyncTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3F58259FA8A8DB43464FA0D /* CallHistorySyncTests.swift */; };
 		6AA0AC6E8E25E8A85D63E7CC /* WatchSessionModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83A5787450609B0C14093679 /* WatchSessionModel.swift */; };
 		6AB86E72201EB1A61898AD5F /* InlineVideoPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8C81B9255E9886FB86E0785 /* InlineVideoPlayer.swift */; };
@@ -385,6 +387,7 @@
 		63E4D099BDCB2311ADFE39E6 /* CallHistorySync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallHistorySync.swift; sourceTree = "<group>"; };
 		6597326A509F73A2993A6B80 /* LayoutCheckUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayoutCheckUITests.swift; sourceTree = "<group>"; };
 		6773F87EE60F91BBDCA4B1F5 /* GroupConversationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupConversationTests.swift; sourceTree = "<group>"; };
+		686F6A6EB3740DE94310653B /* PreviewSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewSupport.swift; sourceTree = "<group>"; };
 		69F4FFBFD65C218FF6505844 /* SaslFailureMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaslFailureMessage.swift; sourceTree = "<group>"; };
 		6C8698ED5D720AC876F51EE3 /* LumaOMEMO2Module.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LumaOMEMO2Module.swift; sourceTree = "<group>"; };
 		6DCB924748780145A707D890 /* MediaViewerDismissGestureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaViewerDismissGestureTests.swift; sourceTree = "<group>"; };
@@ -697,6 +700,7 @@
 				99F26F5B024C5B4BF74CF242 /* MainTabView.swift */,
 				43A4CE3E678096BA76F2988C /* NewChatView.swift */,
 				99BE34DC082D19007241AA62 /* NewGroupView.swift */,
+				686F6A6EB3740DE94310653B /* PreviewSupport.swift */,
 				515DD6F1F80A848C39EBAE84 /* RootView.swift */,
 				CBA20B768A9C675FABCDC821 /* ServerInfoView.swift */,
 				9A338A8EB30206647BDD922F /* SettingsView.swift */,
@@ -1073,6 +1077,7 @@
 				7809154E961CC8EFE7EE852F /* OMEMODevice.swift in Sources */,
 				6216C6AA3787BBF776D78E91 /* PhoneWatchBridge.swift in Sources */,
 				C9CB8C50E85BD8F69ED0105F /* PhotoAttachmentPreview.swift in Sources */,
+				5C1B4AD1C5FB542B1E7154A7 /* PreviewSupport.swift in Sources */,
 				067D121E9C8D8EA076D974FB /* RTCVideoRendererView.swift in Sources */,
 				67438C8911F9B7362073B591 /* ReplyThreadOverlay.swift in Sources */,
 				ABAFC50EF551861779FFD9A1 /* RootView.swift in Sources */,
@@ -1193,6 +1198,7 @@
 				097E9E96B82958C505DCA514 /* OMEMODevice.swift in Sources */,
 				FF07DC53E2877BFDE726132C /* PhoneWatchBridge.swift in Sources */,
 				46985C2741D425D6486849F3 /* PhotoAttachmentPreview.swift in Sources */,
+				6826D225FFEA985B6C7AD184 /* PreviewSupport.swift in Sources */,
 				C7AE34FF0A0A25D0C81D3271 /* RTCVideoRendererView.swift in Sources */,
 				3CFEAC0C613CC9248DA8E35E /* ReplyThreadOverlay.swift in Sources */,
 				3E3A82A737D9009D9BDC04E0 /* RootView.swift in Sources */,
