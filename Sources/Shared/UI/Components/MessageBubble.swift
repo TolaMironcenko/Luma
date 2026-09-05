@@ -37,7 +37,6 @@ struct MessageBubble: View {
                 .offset(x: replySwipeOffset)
         }
         .frame(maxWidth: .infinity)
-        .background(isSelected ? Color.accentColor.opacity(0.1) : Color.clear)
         .contentShape(Rectangle())
         .accessibilityIdentifier("bubble-\(message.clientID)")
         .onTapGesture {
@@ -47,10 +46,6 @@ struct MessageBubble: View {
         .padding(
             .vertical,
             message.kind == .photo || message.kind == .video ? 7 : 2
-        )
-        .simultaneousGesture(
-            replySwipeGesture,
-            including: !isSelectionMode && message.canBeRepliedTo ? .gesture : .none
         )
         .onChange(of: isSelectionMode) { _, selecting in
             guard selecting else { return }
@@ -175,6 +170,7 @@ struct MessageBubble: View {
         )
         .font(.system(size: 19, weight: .semibold))
         .foregroundStyle(Color.accentColor)
+        .scaleEffect(x: replySwipeOffset > 0 ? -1 : 1, y: 1)
         .scaleEffect(
             CGFloat(0.8) + CGFloat(0.2) * MessageReplySwipePolicy.progress(for: replySwipeOffset)
         )
@@ -232,7 +228,7 @@ struct MessageBubble: View {
             .onEnded { value in
                 // The lock is a hint, not a requirement: a fast flick may
                 // deliver no intermediate frame that passes canLock, yet its
-                // end state is still a clear leftward swipe. scrollOwnsGesture
+                // end state is still a clear horizontal swipe. scrollOwnsGesture
                 // alone protects the timeline from reply activation.
                 let shouldReply =
                     !scrollOwnsGesture
@@ -277,7 +273,15 @@ struct MessageBubble: View {
                         .foregroundStyle(senderColor)
                         .padding(.horizontal, 8)
                 }
+                // The drag lives on the bubble itself so a swipe can only start
+                // a reply when it begins on the bubble — not on the empty
+                // space beside it, the sender name, or the metadata row.
                 messageContent
+                    .contentShape(Rectangle())
+                    .simultaneousGesture(
+                        replySwipeGesture,
+                        including: !isSelectionMode && message.canBeRepliedTo ? .gesture : .none
+                    )
 
                 if !reactionSummaries.isEmpty {
                     reactionStrip

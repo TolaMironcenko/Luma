@@ -54,10 +54,6 @@ private struct SearchField: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
         .glassEffect()
-        //        .background(
-        //            Color.secondary.opacity(0.14),
-        //            in: RoundedRectangle(cornerRadius: 10)
-        //        )
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
     }

@@ -170,53 +170,47 @@ struct ChatView: View {
                 }
             } else {
                 ToolbarItem(placement: .primaryAction) {
-                    HStack {
-                        AvatarView(
-                            conversation: liveConversation,
-                            imageData: model.avatarData(for: conversation.jid),
-                            size: 28
-                        ).padding(4)
-                        if !conversation.isGroup {
-                            Menu {
-                                Button {
-                                    Task {
-                                        await model.startCall(
-                                            to: conversation.jid,
-                                            withVideo: false
-                                        )
-                                    }
-                                } label: {
-                                    Label("Аудиозвонок", systemImage: "phone")
+                    if !conversation.isGroup {
+                        Menu {
+                            Button {
+                                Task {
+                                    await model.startCall(
+                                        to: conversation.jid,
+                                        withVideo: false
+                                    )
                                 }
-                                .disabled(!canStartCall)
-                                .help("Аудиозвонок")
-
-                                Button {
-                                    Task {
-                                        await model.startCall(
-                                            to: conversation.jid,
-                                            withVideo: true
-                                        )
-                                    }
-                                } label: {
-                                    Label("Видеозвонок", systemImage: "video")
-                                }
-                                .disabled(!canStartCall)
-                                .help("Видеозвонок")
-                                encryptionMenu
                             } label: {
-                                Image(systemName: "ellipsis.circle")
+                                Label("Аудиозвонок", systemImage: "phone")
                             }
                             .disabled(!canStartCall)
-                        }
-                        if conversation.isGroup {
+                            .help("Аудиозвонок")
+
                             Button {
-                                showingGroupInfo = true
+                                Task {
+                                    await model.startCall(
+                                        to: conversation.jid,
+                                        withVideo: true
+                                    )
+                                }
                             } label: {
-                                Image(systemName: "person.3")
+                                Label("Видеозвонок", systemImage: "video")
                             }
-                            .help("Информация о группе")
+                            .disabled(!canStartCall)
+                            .help("Видеозвонок")
+                            encryptionMenu
+                        } label: {
+                            Image(systemName: "ellipsis.circle")
                         }
+                        .menuIndicator(.hidden)
+                        .disabled(!canStartCall)
+                    }
+                    if conversation.isGroup {
+                        Button {
+                            showingGroupInfo = true
+                        } label: {
+                            Image(systemName: "person.3")
+                        }
+                        .help("Информация о группе")
                     }
                 }
             }
@@ -856,7 +850,7 @@ struct ChatView: View {
                         canUseComposer ? Color.accentColor : Color.secondary
                     )
                     .frame(width: 42, height: 42)
-//                    .background(.ultraThinMaterial, in: Circle())
+                //                    .background(.ultraThinMaterial, in: Circle())
             }
             .buttonStyle(.plain)
             .disabled(!canUseComposer)
@@ -995,24 +989,7 @@ struct ChatView: View {
     }
 
     private var chatNavigationTitle: some View {
-        VStack(spacing: 0) {
-            Text(liveConversation.displayName)
-                .font(.headline)
-                .lineLimit(1)
-            if let typingText = model.typingText(for: liveConversation) {
-                Text(typingText)
-                    .font(.caption2.weight(.medium))
-                    .foregroundStyle(.tint)
-                    .lineLimit(1)
-                    .transition(.opacity)
-            }
-        }
-        .animation(
-            .easeInOut(duration: 0.16),
-            value: model.typingText(for: liveConversation)
-        )
-        .accessibilityElement(children: .combine)
-        .padding()
+        ChatNavigationTitle(model: model, conversation: conversation)
     }
 
     private var canSendToConversation: Bool {
@@ -2652,4 +2629,70 @@ private func writePickedImageData(_ data: Data) throws -> URL {
 
 #Preview {
     PreviewSupport.chatPreview()
+}
+
+/// Extracted chat navigation title: avatar, display name and the transient
+/// «печатает…» line. Kept as its own view so its layout can be previewed on
+/// its own without opening a full chat.
+private struct ChatNavigationTitle: View {
+    @ObservedObject var model: AppModel
+    let conversation: Conversation
+
+    private var liveConversation: Conversation {
+        model.conversations.first(where: { $0.jid == conversation.jid })
+            ?? conversation
+    }
+
+    var body: some View {
+        Button {
+        } label: {
+            titleContent
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var titleContent: some View {
+        HStack {
+            AvatarView(
+                conversation: liveConversation,
+                imageData: model.avatarData(for: conversation.jid),
+                size: 25
+            )
+            .padding(4)
+            VStack(spacing: 0) {
+                Text(liveConversation.displayName)
+                    .font(.headline)
+                    .lineLimit(1)
+                if let typingText = model.typingText(for: liveConversation) {
+                    Text(typingText)
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(.tint)
+                        .lineLimit(1)
+                        .transition(.opacity)
+                }
+            }
+            .padding(.top, 5)
+            .padding(.bottom, 5)
+            .padding(.trailing, 15)
+            .animation(
+                .easeInOut(duration: 0.16),
+                value: model.typingText(for: liveConversation)
+            )
+            .accessibilityElement(children: .combine)
+        }
+        #if os(iOS)
+            .glassEffect()
+        #endif
+    }
+}
+
+#Preview("Заголовок чата") {
+    ChatNavigationTitle(
+        model: PreviewSupport.model,
+        conversation: PreviewSupport.conversation(
+            displayName: "Алиса",
+            isOnline: true
+        )
+    )
+    .padding()
 }

@@ -71,12 +71,13 @@ struct ReplyThreadOverlay: View {
 
                 Button(action: onDismiss) {
                     Image(systemName: "xmark")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.system(size: 17, weight: .semibold))
                         .foregroundStyle(.white.opacity(0.82))
-                        .frame(width: 32, height: 32)
-                        .background(.white.opacity(0.12), in: Circle())
+                        .padding(7)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.glass)
+                .buttonBorderShape(.circle)
+                .background(.clear)
                 .keyboardShortcut(.cancelAction)
                 .accessibilityLabel("Закрыть ветку ответов")
                 .padding(.top, max(12, geometry.safeAreaInsets.top + 6))

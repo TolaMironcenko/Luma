@@ -15,17 +15,17 @@ final class MessageReplySwipeTests: XCTestCase {
         )
     }
 
-    func testLeftToRightSwipeNeverReplies() {
-        XCTAssertFalse(MessageReplySwipePolicy.canLock(CGSize(width: 24, height: 10)))
-        XCTAssertEqual(
+    func testLeftToRightSwipeReplies() {
+        XCTAssertTrue(MessageReplySwipePolicy.canLock(CGSize(width: 24, height: 10)))
+        XCTAssertGreaterThan(
             MessageReplySwipePolicy.offset(locked: false, translation: CGSize(width: 70, height: 8)),
             0
         )
-        XCTAssertEqual(
+        XCTAssertGreaterThan(
             MessageReplySwipePolicy.offset(locked: true, translation: CGSize(width: 70, height: 8)),
             0
         )
-        XCTAssertFalse(MessageReplySwipePolicy.shouldReply(
+        XCTAssertTrue(MessageReplySwipePolicy.shouldReply(
             locked: false,
             translation: CGSize(width: 70, height: 8),
             predictedEndTranslation: CGSize(width: 72, height: 9)
@@ -102,9 +102,10 @@ final class MessageReplySwipeTests: XCTestCase {
 
     func testCanLockRequiresClearHorizontalStart() {
         XCTAssertTrue(MessageReplySwipePolicy.canLock(CGSize(width: -24, height: 10)))
+        XCTAssertTrue(MessageReplySwipePolicy.canLock(CGSize(width: 24, height: 10)))
         XCTAssertFalse(MessageReplySwipePolicy.canLock(CGSize(width: -30, height: 20)))
         XCTAssertFalse(MessageReplySwipePolicy.canLock(CGSize(width: -8, height: 5)))
-        XCTAssertFalse(MessageReplySwipePolicy.canLock(CGSize(width: 40, height: 4)))
+        XCTAssertTrue(MessageReplySwipePolicy.canLock(CGSize(width: 40, height: 4)))
     }
 
     func testCanLockIsUnavailableOnceTheGestureTurnsVertical() {
@@ -124,6 +125,48 @@ final class MessageReplySwipeTests: XCTestCase {
         ))
         XCTAssertLessThan(
             MessageReplySwipePolicy.offset(locked: true, translation: CGSize(width: -70, height: 60)),
+            0
+        )
+    }
+
+    func testRightwardDiagonalScrollDoesNotReply() {
+        XCTAssertFalse(MessageReplySwipePolicy.shouldReply(
+            locked: false,
+            translation: CGSize(width: 54, height: 44),
+            predictedEndTranslation: CGSize(width: 76, height: 58)
+        ))
+        XCTAssertEqual(
+            MessageReplySwipePolicy.offset(locked: false, translation: CGSize(width: 54, height: 44)),
+            0
+        )
+    }
+
+    func testRightwardVisualOffsetIsCapped() {
+        XCTAssertEqual(
+            MessageReplySwipePolicy.offset(locked: true, translation: CGSize(width: 500, height: 0)),
+            MessageReplySwipePolicy.maximumOffset
+        )
+    }
+
+    func testRightwardIndicatorStaysHiddenUntilActivationDistance() {
+        XCTAssertEqual(
+            MessageReplySwipePolicy.offset(locked: false, translation: CGSize(width: 20, height: 0)),
+            0
+        )
+        XCTAssertGreaterThan(
+            MessageReplySwipePolicy.offset(locked: false, translation: CGSize(width: 24, height: 0)),
+            0
+        )
+    }
+
+    func testRightwardLockedSwipeToleratesVerticalDrift() {
+        XCTAssertTrue(MessageReplySwipePolicy.shouldReply(
+            locked: true,
+            translation: CGSize(width: 70, height: 60),
+            predictedEndTranslation: CGSize(width: 70, height: 60)
+        ))
+        XCTAssertGreaterThan(
+            MessageReplySwipePolicy.offset(locked: true, translation: CGSize(width: 70, height: 60)),
             0
         )
     }

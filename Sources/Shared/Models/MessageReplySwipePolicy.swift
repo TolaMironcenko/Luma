@@ -14,13 +14,12 @@ struct MessageReplySwipePolicy {
     static let followDominance: CGFloat = 1.05
 
     /// Whether this translation can lock the gesture as a horizontal swipe.
-    /// Only right-to-left (swipe left, negative width) is accepted, and the
-    /// lock is only available early: once the finger has travelled mostly
-    /// vertically the scroll view owns the touch and the swipe must never
-    /// activate for the rest of that gesture.
+    /// Both directions are accepted, and the lock is only available early:
+    /// once the finger has travelled mostly vertically the scroll view owns
+    /// the touch and the swipe must never activate for the rest of that
+    /// gesture.
     static func canLock(_ translation: CGSize) -> Bool {
-        translation.width < 0
-            && abs(translation.height) <= 24
+        abs(translation.height) <= 24
             && isHorizontal(translation, dominance: lockDominance)
             && abs(translation.width) >= activationDistance * 0.5
     }
@@ -29,14 +28,15 @@ struct MessageReplySwipePolicy {
         isHorizontal(translation, dominance: lockDominance)
     }
 
+    /// Visual offset of the bubble: negative for a left swipe, positive for
+    /// a right swipe, zero while the movement is not clearly horizontal.
     static func offset(locked: Bool, translation: CGSize) -> CGFloat {
-        guard translation.width < 0 else { return 0 }
         let dominance = locked ? followDominance : lockDominance
         guard isHorizontal(translation, dominance: dominance) else { return 0 }
         let width = abs(translation.width)
         guard width >= activationDistance else { return 0 }
         let distance = min((width - activationDistance) * 0.72 + 12, maximumOffset)
-        return -distance
+        return translation.width < 0 ? -distance : distance
     }
 
     static func shouldReply(
@@ -47,7 +47,6 @@ struct MessageReplySwipePolicy {
         let candidate = abs(predictedEndTranslation.width) > abs(translation.width)
             ? predictedEndTranslation
             : translation
-        guard candidate.width < 0 else { return false }
         let dominance = locked ? followDominance : lockDominance
         return isHorizontal(candidate, dominance: dominance)
             && abs(candidate.width) >= triggerDistance
