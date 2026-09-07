@@ -57,10 +57,14 @@ final class VideoNoteRecorder: NSObject, ObservableObject, AVCaptureFileOutputRe
     private var fileValidationTask: Task<Void, Never>?
     private var cameraSwitchContinuation: CheckedContinuation<Void, Error>?
     private var cameraFlipTimeoutTask: Task<Void, Never>?
+    private var restoreAudioRouteTask: Task<Void, Never>?
     private var cameraFlipRequested = false
     private var restartingSegmentForCameraFlip = false
     private var recordedSegments: [URL] = []
     private var segmentsTotalDuration: TimeInterval = 0
+    /// The iOS front camera routes the quiet earpiece microphone, so the
+    /// finalized audio gets a gain boost when any segment used it.
+    private var usedFrontCamera = false
 
     private struct CaptureGraph {
         let cameraInput: AVCaptureDeviceInput
@@ -162,6 +166,9 @@ final class VideoNoteRecorder: NSObject, ObservableObject, AVCaptureFileOutputRe
             elapsed = 0
         }
         restartingSegmentForCameraFlip = false
+        if isUsingFrontCamera {
+            usedFrontCamera = true
+        }
         isRecording = true
 
         let output = movieOutput
@@ -350,6 +357,27 @@ final class VideoNoteRecorder: NSObject, ObservableObject, AVCaptureFileOutputRe
         hasAlternateCamera =
             hasCamera(at: nextPosition == .front ? .back : .front)
         configureVideoConnection()
+        #if os(iOS)
+            // Flipping to the front camera makes iOS re-route the audio to
+            // the earpiece and switch the voice processing into the quiet
+            // receiver mode — but the system performs that re-routing
+            // asynchronously AFTER the swap commits. Restore the speaker
+            // route with a short delay so it wins the race.
+            restoreAudioRouteTask?.cancel()
+            restoreAudioRouteTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: 800_000_000)
+                guard !Task.isCancelled, let self, self.isPrepared else {
+                    return
+                }
+                let audioSession = AVAudioSession.sharedInstance()
+                try? audioSession.setCategory(
+                    .playAndRecord,
+                    mode: .default,
+                    options: [.defaultToSpeaker, .allowBluetoothHFP]
+                )
+                try? audioSession.overrideOutputAudioPort(.speaker)
+            }
+        #endif
     }
 
     func toggleMicrophoneMuted() {
@@ -617,7 +645,8 @@ final class VideoNoteRecorder: NSObject, ObservableObject, AVCaptureFileOutputRe
                 // Merge the flip segments back together (passthrough, no
                 // re-encode). The circle bubble crops the picture visually.
                 let finalization = await self.fileInspector.finalizeVideoNote(
-                    segments: self.recordedSegments + [url]
+                    segments: self.recordedSegments + [url],
+                    frontCameraUsed: self.usedFrontCamera
                 )
                 guard !Task.isCancelled,
                     VideoNoteRecordingLifecycle.acceptsCompletion(
@@ -849,6 +878,7 @@ final class VideoNoteRecorder: NSObject, ObservableObject, AVCaptureFileOutputRe
         cameraFlipTimeoutTask = nil
         cameraFlipRequested = false
         restartingSegmentForCameraFlip = false
+        usedFrontCamera = false
         let segments = recordedSegments
         recordedSegments = []
         segmentsTotalDuration = 0
@@ -995,7 +1025,23 @@ final class VideoNoteRecorder: NSObject, ObservableObject, AVCaptureFileOutputRe
                     }
                     session.addInput(cameraInput)
 
-                    guard let microphone = AVCaptureDevice.default(for: .audio) else {
+                    #if os(iOS)
+                        // iOS routes the microphone by the active camera:
+                        // the front camera gets the quiet earpiece mic and the
+                        // back camera the loud bottom mic. Pin the bottom
+                        // microphone explicitly so the voice level stays
+                        // consistent no matter which camera is recording.
+                        let microphone =
+                            AVCaptureDevice.default(
+                                .builtInMicrophone,
+                                for: .audio,
+                                position: .back
+                            )
+                            ?? AVCaptureDevice.default(for: .audio)
+                    #else
+                        let microphone = AVCaptureDevice.default(for: .audio)
+                    #endif
+                    guard let microphone else {
                         throw VideoNoteRecorderError.microphoneUnavailable
                     }
                     let microphoneInput = try AVCaptureDeviceInput(device: microphone)
@@ -1076,16 +1122,30 @@ private actor VideoNoteFileInspector {
         let duration: TimeInterval
     }
 
-    /// Hands the finished recording back for sending. Camera flips split a
-    /// recording into several .mov files, so the segments are merged back
     /// Hands the finished recording back for sending. The capture is
     /// already rotated to portrait at record time, so no re-encode is needed:
     /// the raw file is sent as-is and camera flips are merged with a
-    /// passthrough export (audio and video stay bit-exact).
-    func finalizeVideoNote(segments: [URL]) async -> Finalization? {
+    /// passthrough export (audio and video stay bit-exact). On iOS, when the
+    /// quiet front camera was used, the audio gets a deterministic volume
+    /// boost (see boostFrontCameraAudio).
+    func finalizeVideoNote(
+        segments: [URL],
+        frontCameraUsed: Bool
+    ) async -> Finalization? {
         videoNoteFinalizeLogger.info(
-            "finalize start segments=\(segments.count)"
+            "finalize start segments=\(segments.count) front=\(frontCameraUsed)"
         )
+        #if os(iOS)
+            if frontCameraUsed, segments.count == 1 {
+                if let boosted = await Self.boostFrontCameraAudio(
+                    segment: segments[0]
+                ) {
+                    videoNoteFinalizeLogger.info("finalize boosted OK")
+                    return boosted
+                }
+                videoNoteFinalizeLogger.info("finalize boost failed, raw")
+            }
+        #endif
         if segments.count == 1 {
             let duration =
                 (try? await AVURLAsset(url: segments[0]).load(.duration)
@@ -1095,6 +1155,201 @@ private actor VideoNoteFileInspector {
         }
         videoNoteFinalizeLogger.info("finalize passthrough")
         return await Self.passthroughMerge(segments: segments)
+    }
+
+    /// Re-encodes a single segment with a fixed audio gain. The iOS front
+    /// camera routes the quiet earpiece microphone, and the system offers no
+    /// app-level way to override that routing — so the finished recording
+    /// gets a deterministic volume boost instead. The video frames are
+    /// copied verbatim (same dimensions and rotation transform); the audio
+    /// goes through an AVAudioMix that applies the gain without manual
+    /// sample math.
+    private static func boostFrontCameraAudio(
+        segment: URL
+    ) async -> Finalization? {
+        let asset = AVURLAsset(url: segment)
+        guard
+            let videoTrack = try? await asset.loadTracks(withMediaType: .video)
+                .first,
+            let audioTrack = try? await asset.loadTracks(withMediaType: .audio)
+                .first,
+            let duration = try? await asset.load(.duration)
+        else { return nil }
+        guard let outputURL = finalizationOutputURL() else { return nil }
+        let writer: AVAssetWriter
+        do {
+            writer = try AVAssetWriter(outputURL: outputURL, fileType: .mov)
+        } catch {
+            return nil
+        }
+        let size = try? await videoTrack.load(.naturalSize)
+        let width = max(1, Int(size?.width ?? 640))
+        let height = max(1, Int(size?.height ?? 480))
+        let videoInput = AVAssetWriterInput(
+            mediaType: .video,
+            outputSettings: [
+                AVVideoCodecKey: AVVideoCodecType.h264,
+                AVVideoWidthKey: width,
+                AVVideoHeightKey: height,
+            ]
+        )
+        videoInput.expectsMediaDataInRealTime = false
+        videoInput.transform = videoTrack.preferredTransform
+        let adaptor = AVAssetWriterInputPixelBufferAdaptor(
+            assetWriterInput: videoInput,
+            sourcePixelBufferAttributes: [
+                kCVPixelBufferPixelFormatTypeKey as String:
+                    kCVPixelFormatType_32BGRA,
+                kCVPixelBufferWidthKey as String: width,
+                kCVPixelBufferHeightKey as String: height,
+            ]
+        )
+        guard writer.canAdd(videoInput) else { return nil }
+        writer.add(videoInput)
+        let audioInput = AVAssetWriterInput(
+            mediaType: .audio,
+            outputSettings: [
+                AVFormatIDKey: kAudioFormatMPEG4AAC,
+                AVSampleRateKey: 44_100,
+                AVNumberOfChannelsKey: 1,
+                AVEncoderBitRateKey: 96_000,
+            ]
+        )
+        audioInput.expectsMediaDataInRealTime = false
+        guard writer.canAdd(audioInput) else { return nil }
+        writer.add(audioInput)
+
+        let reader: AVAssetReader
+        do {
+            reader = try AVAssetReader(asset: asset)
+        } catch {
+            return nil
+        }
+        let videoOutput = AVAssetReaderTrackOutput(
+            track: videoTrack,
+            outputSettings: [
+                kCVPixelBufferPixelFormatTypeKey as String:
+                    kCVPixelFormatType_32BGRA
+            ]
+        )
+        guard reader.canAdd(videoOutput) else { return nil }
+        reader.add(videoOutput)
+        // The reader applies the gain via the audio mix.
+        let mix = AVMutableAudioMix()
+        let parameters = AVMutableAudioMixInputParameters(track: audioTrack)
+        parameters.setVolume(3.5, at: .zero)
+        mix.inputParameters = [parameters]
+        let audioOutput = AVAssetReaderAudioMixOutput(
+            audioTracks: [audioTrack],
+            audioSettings: [
+                AVFormatIDKey: kAudioFormatLinearPCM
+            ]
+        )
+        audioOutput.audioMix = mix
+        guard reader.canAdd(audioOutput) else { return nil }
+        reader.add(audioOutput)
+
+        guard reader.startReading() else { return nil }
+        guard writer.startWriting() else {
+            try? FileManager.default.removeItem(at: outputURL)
+            return nil
+        }
+        guard let pool = adaptor.pixelBufferPool else {
+            writer.cancelWriting()
+            try? FileManager.default.removeItem(at: outputURL)
+            return nil
+        }
+
+        var sessionStarted = false
+        var videoSample = videoOutput.copyNextSampleBuffer()
+        var audioSample = audioOutput.copyNextSampleBuffer()
+        while videoSample != nil || audioSample != nil {
+            let videoPTS = videoSample.map {
+                CMSampleBufferGetPresentationTimeStamp($0)
+            }
+            let audioPTS = audioSample.map {
+                CMSampleBufferGetPresentationTimeStamp($0)
+            }
+            let takeVideo: Bool
+            switch (videoPTS, audioPTS) {
+            case let (video?, audio?): takeVideo = video <= audio
+            case (_?, nil): takeVideo = true
+            default: takeVideo = false
+            }
+            if takeVideo, let sample = videoSample {
+                videoSample = videoOutput.copyNextSampleBuffer()
+                guard let source = CMSampleBufferGetImageBuffer(sample)
+                else { continue }
+                let pts = CMSampleBufferGetPresentationTimeStamp(sample)
+                if !sessionStarted {
+                    writer.startSession(atSourceTime: pts)
+                    sessionStarted = true
+                }
+                while !videoInput.isReadyForMoreMediaData {
+                    try? await Task.sleep(nanoseconds: 2_000_000)
+                }
+                var buffer: CVPixelBuffer?
+                CVPixelBufferPoolCreatePixelBuffer(
+                    kCFAllocatorDefault, pool, &buffer
+                )
+                guard let buffer else { continue }
+                CVPixelBufferLockBaseAddress(source, .readOnly)
+                CVPixelBufferLockBaseAddress(buffer, [])
+                let srcBase = CVPixelBufferGetBaseAddress(source)!
+                let dstBase = CVPixelBufferGetBaseAddress(buffer)!
+                let srcBytes = CVPixelBufferGetBytesPerRow(source)
+                let dstBytes = CVPixelBufferGetBytesPerRow(buffer)
+                let copyHeight = min(
+                    CVPixelBufferGetHeight(source),
+                    CVPixelBufferGetHeight(buffer)
+                )
+                let copyBytes = min(srcBytes, dstBytes)
+                for row in 0..<copyHeight {
+                    memcpy(
+                        dstBase.advanced(by: row * dstBytes),
+                        srcBase.advanced(by: row * srcBytes),
+                        copyBytes
+                    )
+                }
+                CVPixelBufferUnlockBaseAddress(buffer, [])
+                CVPixelBufferUnlockBaseAddress(source, .readOnly)
+                guard adaptor.append(buffer, withPresentationTime: pts)
+                else {
+                    writer.cancelWriting()
+                    try? FileManager.default.removeItem(at: outputURL)
+                    return nil
+                }
+            } else if let sample = audioSample {
+                audioSample = audioOutput.copyNextSampleBuffer()
+                let pts = CMSampleBufferGetPresentationTimeStamp(sample)
+                guard pts.isValid else { continue }
+                while !audioInput.isReadyForMoreMediaData {
+                    try? await Task.sleep(nanoseconds: 2_000_000)
+                }
+                guard audioInput.append(sample) else {
+                    writer.cancelWriting()
+                    try? FileManager.default.removeItem(at: outputURL)
+                    return nil
+                }
+            }
+        }
+        videoInput.markAsFinished()
+        audioInput.markAsFinished()
+        let finishTask = Task { await writer.finishWriting() }
+        let watchdog = Task {
+            try? await Task.sleep(nanoseconds: 30_000_000_000)
+            if !Task.isCancelled {
+                writer.cancelWriting()
+            }
+        }
+        await finishTask.value
+        watchdog.cancel()
+        guard writer.status == .completed else {
+            writer.cancelWriting()
+            try? FileManager.default.removeItem(at: outputURL)
+            return nil
+        }
+        return Finalization(url: outputURL, duration: duration.seconds)
     }
 
     private static func composition(from urls: [URL]) async -> Composition? {
