@@ -18,12 +18,14 @@ required=(
   Sources/Shared/Models/ArchiveSyncRecoveryPolicy.swift
   Sources/Shared/Models/ArchiveSyncWorkBudget.swift
   Sources/Shared/Models/ArchiveMessageBatchPolicy.swift
+  Sources/Shared/Models/OlderHistoryScrollPolicy.swift
   Sources/Shared/Models/ChatScrollPositionPolicy.swift
   Sources/Shared/Models/ChatTimelineEntry.swift
   Sources/Shared/Models/ChatTypingPolicy.swift
   Sources/Shared/Models/MessageReaction.swift
   Sources/Shared/Models/MediaPickerSelectionPolicy.swift
   Sources/Shared/Models/VideoNoteRecordingCompletionPolicy.swift
+  Sources/Shared/Models/VideoNoteRotationPolicy.swift
   Sources/Shared/Models/VideoNoteRecordingLifecycle.swift
   Sources/Shared/Models/MessageReplySwipePolicy.swift
   Sources/Shared/Models/MessageReplyFallback.swift
@@ -66,6 +68,7 @@ required=(
   Tests/MediaViewerDismissGestureTests.swift
   Tests/ArchiveSyncCheckpointTests.swift
   Tests/ArchiveSyncPaginationTests.swift
+  Tests/OlderHistoryScrollPolicyTests.swift
   Tests/ArchiveSyncRecoveryPolicyTests.swift
   Tests/ArchiveSyncWorkBudgetTests.swift
   Tests/ArchiveMessageBatchPolicyTests.swift
@@ -77,6 +80,7 @@ required=(
   Tests/MediaPickerSelectionPolicyTests.swift
   Tests/VideoNoteRecordingCompletionPolicyTests.swift
   Tests/VideoNoteRecordingLifecycleTests.swift
+  Tests/VideoNoteRotationPolicyTests.swift
   Tests/VideoNoteStopPolicyTests.swift
   Tests/MessageReplySwipeTests.swift
   Tests/WatchVoiceMessageTests.swift
@@ -244,6 +248,10 @@ grep -q 'RSM.Query(lastItems: archiveBootstrapMessageLimit)' Sources/Shared/XMPP
 }
 grep -q 'archiveWorkBudget.recordCompletedPage' Sources/Shared/XMPP/XMPPService.swift || {
   echo "Incremental MAM passes must have a finite foreground work budget"
+  exit 1
+}
+grep -q 'OlderHistoryScrollPolicy.page(' Sources/Shared/XMPP/XMPPService.swift || {
+  echo "Interactive history paging must advance via the server's RSM first cursor"
   exit 1
 }
 if grep -q 'scheduleArchiveRestart\|restartDelayNanoseconds' Sources/Shared/XMPP/XMPPService.swift; then
@@ -642,6 +650,10 @@ if grep -q 'Режим видеосообщения\|composerCaptureMode.*video'
   echo "Video-note recording must not reuse the inline voice-message gesture"
   exit 1
 fi
+grep -q 'VideoNoteRotationPolicy.currentInterfaceOrientation' Sources/Shared/Services/VideoNoteRecorder.swift || {
+  echo "Video note capture must rotate by the interface orientation, not the device sensor"
+  exit 1
+}
 grep -q 'resetCaptureGraph()' Sources/Shared/Services/VideoNoteRecorder.swift || {
   echo "Reusable video-note capture cleanup is missing"
   exit 1

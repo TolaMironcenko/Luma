@@ -319,7 +319,7 @@ final class XMPPService {
     private var mucCursorFallbackArchives: Set<MAMArchiveKey> = []
     private var delayedLiveByArchive: [MAMArchiveKey: [BufferedLiveDelivery]] = [:]
     private var olderHistoryQueryID: String?
-    private var olderHistoryCompletion: ((Result<Bool, Error>) -> Void)?
+    private var olderHistoryCompletion: ((Result<OlderHistoryScrollPage, Error>) -> Void)?
     private var olderHistoryTimeoutTask: Task<Void, Never>?
     /// When non-nil, archived mutations produced while applying an interactive
     /// backward-history page are collected here instead of the catch-up
@@ -989,12 +989,13 @@ final class XMPPService {
     /// Loads one older MAM page for a single conversation. `before` is the
     /// oldest server/MAM id currently known by the UI. For direct chats the
     /// query is scoped with XEP-0313 `with`; for MUC the IQ is addressed to the
-    /// room archive itself.
+    /// room archive itself. The completion carries the cursor for the next,
+    /// older page (RSM <first> of the returned page).
     func loadOlderHistory(
         conversationJID: String,
         isGroup: Bool,
         before: String?,
-        completion: @escaping (Result<Bool, Error>) -> Void
+        completion: @escaping (Result<OlderHistoryScrollPage, Error>) -> Void
     ) {
         guard let client, client.state == .connected() else {
             completion(.failure(LumaXMPPError.notConnected))
@@ -1015,7 +1016,7 @@ final class XMPPService {
         conversationJID: String,
         isGroup: Bool,
         before: String?,
-        completion: @escaping (Result<Bool, Error>) -> Void
+        completion: @escaping (Result<OlderHistoryScrollPage, Error>) -> Void
     ) {
         guard let client, client.state == .connected() else {
             completion(.failure(LumaXMPPError.notConnected))
@@ -1132,7 +1133,18 @@ final class XMPPService {
                     }
                     switch result {
                     case .success(let response):
-                        self.finishOlderHistory(result: .success(!response.complete))
+                        // The next page's anchor is the server's RSM <first>
+                        // of this page. Pages that insert nothing (reactions,
+                        // retractions, duplicates) still advance the cursor,
+                        // so the next scroll requests genuinely older history
+                        // instead of the same page again.
+                        self.finishOlderHistory(
+                            result: .success(
+                                OlderHistoryScrollPolicy.page(
+                                    complete: response.complete,
+                                    pageFirstID: response.rsm?.first
+                                )
+                            ))
                     case .failure(let error):
                         // Do not leave the UI in the loading state. A failed
                         // interactive query is recoverable by the next scroll.
@@ -1180,7 +1192,7 @@ final class XMPPService {
     /// Every terminal path (success, failure, timeout, disconnect, background)
     /// funnels through here so the UI's "loading older history" spinner can
     /// never be left stuck.
-    private func finishOlderHistory(result: Result<Bool, Error>) {
+    private func finishOlderHistory(result: Result<OlderHistoryScrollPage, Error>) {
         guard olderHistoryCompletion != nil else { return }
         let completion = olderHistoryCompletion
         olderHistoryCompletion = nil
@@ -2295,15 +2307,6 @@ final class XMPPService {
                 // message path.
                 return
             default:
-                if outgoing {
-                    // Our own outgoing echo cannot be decrypted back (no
-                    // encrypt-to-self key, or a stale self-session). The
-                    // optimistic local copy already carries the content, and
-                    // messages sent from other devices have nothing we could
-                    // render. Other clients never surface these stanzas as
-                    // messages, so dropping them matches the server history.
-                    return
-                }
                 // Some clients include a plaintext <body> fallback alongside the
                 // OMEMO <encrypted> payload. When decryption fails, prefer that
                 // fallback so a readable message is never shown as undecryptable.
@@ -2312,6 +2315,15 @@ final class XMPPService {
                     fingerprint = nil
                     contentMessage = message
                 } else {
+                    // An undecryptable outgoing stanza is still part of the
+                    // user's own history — e.g. messages written on another
+                    // device whose keys this device never had. Dropping them
+                    // silently made such conversations look empty even though
+                    // the archive has history, so surface them as a
+                    // decryption-failed placeholder instead. Echoes of
+                    // messages sent from this device carry the same origin-id
+                    // as the local optimistic copy and are merged there, so
+                    // they never produce a second bubble.
                     security = .decryptionFailed
                     fingerprint = nil
                     contentMessage = nil
@@ -2572,13 +2584,17 @@ final class XMPPService {
                     return
                 default:
                     if outgoing {
+                        // Register the room-assigned stanza-id for future
+                        // replies even when this device cannot decrypt the
+                        // payload. Fall through to the placeholder path: the
+                        // message is part of the room's history and must not
+                        // vanish from the timeline.
                         emitGroupEchoIfPossible(
                             roomJID: roomJID,
                             messageID: id,
                             stanzaID: stanzaID,
                             senderJID: senderJID
                         )
-                        return
                     }
                     if message.body?.isEmpty == false {
                         security = .plaintext

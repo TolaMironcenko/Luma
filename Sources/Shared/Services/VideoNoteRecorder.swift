@@ -1,6 +1,13 @@
 @preconcurrency import AVFoundation
 import Combine
+import CoreImage
 import Foundation
+import os
+
+private let videoNoteFinalizeLogger = Logger(
+    subsystem: "Luma",
+    category: "video-note-finalize"
+)
 
 #if os(iOS)
     import UIKit
@@ -17,6 +24,7 @@ final class VideoNoteRecorder: NSObject, ObservableObject, AVCaptureFileOutputRe
     @Published private(set) var isRecording = false
     @Published private(set) var elapsed: TimeInterval = 0
     @Published private(set) var isUsingFrontCamera = true
+    @Published private(set) var hasAlternateCamera = false
     @Published private(set) var isMicrophoneMuted = false
 
     let session = AVCaptureSession()
@@ -47,6 +55,12 @@ final class VideoNoteRecorder: NSObject, ObservableObject, AVCaptureFileOutputRe
     private var startupTimeoutTask: Task<Void, Never>?
     private var finalizationTimeoutTask: Task<Void, Never>?
     private var fileValidationTask: Task<Void, Never>?
+    private var cameraSwitchContinuation: CheckedContinuation<Void, Error>?
+    private var cameraFlipTimeoutTask: Task<Void, Never>?
+    private var cameraFlipRequested = false
+    private var restartingSegmentForCameraFlip = false
+    private var recordedSegments: [URL] = []
+    private var segmentsTotalDuration: TimeInterval = 0
 
     private struct CaptureGraph {
         let cameraInput: AVCaptureDeviceInput
@@ -95,7 +109,11 @@ final class VideoNoteRecorder: NSObject, ObservableObject, AVCaptureFileOutputRe
         #if os(iOS)
             try AVAudioSession.sharedInstance().setCategory(
                 .playAndRecord,
-                mode: .videoRecording,
+                // .default keeps voice processing and automatic gain control:
+                // a talking circle recorded at arm's length (front camera)
+                // stays loud and consistent, unlike .videoRecording which
+                // disables AGC and records the raw microphone level.
+                mode: .default,
                 options: [.defaultToSpeaker, .allowBluetoothHFP]
             )
             try AVAudioSession.sharedInstance().setActive(true)
@@ -108,6 +126,8 @@ final class VideoNoteRecorder: NSObject, ObservableObject, AVCaptureFileOutputRe
         cameraInput = graph.cameraInput
         microphoneInput = graph.microphoneInput
         isUsingFrontCamera = graph.usesFrontCamera
+        hasAlternateCamera =
+            hasCamera(at: graph.usesFrontCamera ? .back : .front)
 
         configureVideoConnection()
         try await startCaptureSession(generation: generation)
@@ -137,8 +157,11 @@ final class VideoNoteRecorder: NSObject, ObservableObject, AVCaptureFileOutputRe
         requestedMinimumDuration = 0
         activeRecordingURL = url
         lifecycle = .starting
-        startedAt = nil
-        elapsed = 0
+        if !restartingSegmentForCameraFlip {
+            startedAt = nil
+            elapsed = 0
+        }
+        restartingSegmentForCameraFlip = false
         isRecording = true
 
         let output = movieOutput
@@ -182,52 +205,151 @@ final class VideoNoteRecorder: NSObject, ObservableObject, AVCaptureFileOutputRe
         }
     }
 
+    /// Flips between the front and the back camera. While recording,
+    /// AVFoundation tears the active movie down when its input is removed, so
+    /// the current segment is closed first, the camera is swapped, and a new
+    /// segment starts; the segments are merged back together on finalization.
     func switchCamera() async throws {
         #if os(iOS)
             guard isPrepared,
-                lifecycle == .prepared,
+                hasAlternateCamera,
                 let currentInput = cameraInput
             else {
                 throw VideoNoteRecorderError.notPrepared
             }
-            let nextPosition: AVCaptureDevice.Position = isUsingFrontCamera ? .back : .front
-            guard
-                let camera = AVCaptureDevice.default(
-                    .builtInWideAngleCamera,
-                    for: .video,
-                    position: nextPosition
-                )
-            else {
-                throw VideoNoteRecorderError.alternateCameraUnavailable
-            }
-
-            let nextInput = try AVCaptureDeviceInput(device: camera)
-            let session = session
-            try await withCheckedThrowingContinuation {
-                (continuation: CheckedContinuation<Void, Error>) in
-                sessionQueue.async {
-                    session.beginConfiguration()
-                    session.removeInput(currentInput)
-                    guard session.canAddInput(nextInput) else {
-                        if session.canAddInput(currentInput) {
-                            session.addInput(currentInput)
-                        }
-                        session.commitConfiguration()
-                        continuation.resume(throwing: VideoNoteRecorderError.configurationFailed)
-                        return
-                    }
-                    session.addInput(nextInput)
-                    session.commitConfiguration()
-                    continuation.resume()
+            switch lifecycle {
+            case .prepared:
+                try await swapCameraInput(replacing: currentInput)
+            case .starting, .recording:
+                try await stopSegmentForCameraFlip()
+                guard let input = cameraInput else {
+                    throw VideoNoteRecorderError.notPrepared
                 }
+                try await swapCameraInput(replacing: input)
+                restartingSegmentForCameraFlip = true
+                try start()
+            case .stopping, .idle:
+                throw VideoNoteRecorderError.notPrepared
             }
-
-            cameraInput = nextInput
-            isUsingFrontCamera = nextPosition == .front
-            configureVideoConnection()
         #else
             throw VideoNoteRecorderError.alternateCameraUnavailable
         #endif
+    }
+
+    /// Closes the in-flight segment without finishing the whole recording:
+    /// the file is kept (when non-empty), per-segment state resets, and the
+    /// pending switchCamera call resumes.
+    private func stopSegmentForCameraFlip() async throws {
+        try await withCheckedThrowingContinuation {
+            (continuation: CheckedContinuation<Void, Error>) in
+            cameraSwitchContinuation = continuation
+            cameraFlipRequested = true
+            requestStop(afterMinimumDuration: 0)
+            scheduleCameraFlipTimeout()
+        }
+    }
+
+    private func scheduleCameraFlipTimeout() {
+        cameraFlipTimeoutTask?.cancel()
+        cameraFlipTimeoutTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 8_000_000_000)
+            guard !Task.isCancelled,
+                let self,
+                let continuation = self.cameraSwitchContinuation
+            else { return }
+            self.cameraSwitchContinuation = nil
+            self.cameraFlipRequested = false
+            continuation.resume(
+                throwing: VideoNoteRecorderError.finalizationTimedOut
+            )
+        }
+    }
+
+    private func handleCameraFlipSegment(url: URL) {
+        cameraFlipTimeoutTask?.cancel()
+        cameraFlipTimeoutTask = nil
+        let continuation = cameraSwitchContinuation
+        cameraSwitchContinuation = nil
+
+        fileValidationTask?.cancel()
+        fileValidationTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            let inspection = await self.fileInspector.inspect(
+                url: url,
+                fallbackDuration: self.measuredWallClockDuration
+            )
+            guard !Task.isCancelled,
+                VideoNoteRecordingLifecycle.acceptsCompletion(
+                    activeURL: self.activeRecordingURL,
+                    outputURL: url
+                )
+            else { return }
+            self.fileValidationTask = nil
+            if let inspection, inspection.duration > 0.05 {
+                self.recordedSegments.append(url)
+                self.segmentsTotalDuration += inspection.duration
+            } else {
+                try? FileManager.default.removeItem(at: url)
+            }
+            self.resetForNextSegment()
+            continuation?.resume(returning: ())
+        }
+    }
+
+    private func resetForNextSegment() {
+        lifecycle = .prepared
+        activeRecordingURL = nil
+        discardCurrentRecording = false
+        stopRequested = false
+        requestedMinimumDuration = 0
+        isRecording = false
+        timer?.invalidate()
+        timer = nil
+    }
+
+    private func swapCameraInput(
+        replacing currentInput: AVCaptureDeviceInput
+    ) async throws {
+        let nextPosition: AVCaptureDevice.Position =
+            isUsingFrontCamera ? .back : .front
+        guard
+            let camera = AVCaptureDevice.default(
+                .builtInWideAngleCamera,
+                for: .video,
+                position: nextPosition
+            )
+        else {
+            throw VideoNoteRecorderError.alternateCameraUnavailable
+        }
+
+        let nextInput = try AVCaptureDeviceInput(device: camera)
+        let session = session
+        try await withCheckedThrowingContinuation {
+            (continuation: CheckedContinuation<Void, Error>) in
+            sessionQueue.async {
+                session.beginConfiguration()
+                session.removeInput(currentInput)
+                guard session.canAddInput(nextInput) else {
+                    if session.canAddInput(currentInput) {
+                        session.addInput(currentInput)
+                    }
+                    session.commitConfiguration()
+                    continuation.resume(
+                        throwing: VideoNoteRecorderError.configurationFailed
+                    )
+                    return
+                }
+                session.addInput(nextInput)
+                session.commitConfiguration()
+                continuation.resume()
+            }
+        }
+
+        cameraInput = nextInput
+        isUsingFrontCamera = nextPosition == .front
+        hasAlternateCamera =
+            hasCamera(at: nextPosition == .front ? .back : .front)
+        configureVideoConnection()
     }
 
     func toggleMicrophoneMuted() {
@@ -261,7 +383,7 @@ final class VideoNoteRecorder: NSObject, ObservableObject, AVCaptureFileOutputRe
         error: Error?
     ) {
         Task { @MainActor [weak self] in
-            self?.recordingDidFinish(url: outputFileURL, error: error)
+            await self?.recordingDidFinish(url: outputFileURL, error: error)
         }
     }
 
@@ -369,7 +491,8 @@ final class VideoNoteRecorder: NSObject, ObservableObject, AVCaptureFileOutputRe
                 }
 
                 let remaining = VideoNoteStopPolicy.remainingRecordedDuration(
-                    recordedDuration: snapshot.recordedDuration,
+                    recordedDuration: snapshot.recordedDuration
+                        + self.segmentsTotalDuration,
                     minimumDuration: minimumDuration
                 )
                 if remaining <= 0 || Date() >= mediaDeadline { break }
@@ -408,7 +531,7 @@ final class VideoNoteRecorder: NSObject, ObservableObject, AVCaptureFileOutputRe
         }
     }
 
-    private func recordingDidFinish(url: URL, error: Error?) {
+    private func recordingDidFinish(url: URL, error: Error?) async {
         guard
             VideoNoteRecordingLifecycle.acceptsCompletion(
                 activeURL: activeRecordingURL,
@@ -433,6 +556,14 @@ final class VideoNoteRecorder: NSObject, ObservableObject, AVCaptureFileOutputRe
         isRecording = false
         lifecycle = .stopping
 
+        if cameraFlipRequested {
+            // A flip during recording first closes the current segment: keep
+            // it and hand control back to the pending switchCamera call.
+            cameraFlipRequested = false
+            handleCameraFlipSegment(url: url)
+            return
+        }
+
         let fallbackDuration = measuredWallClockDuration
         let shouldDiscard = discardCurrentRecording
         let wasStopRequested = stopRequested
@@ -441,6 +572,12 @@ final class VideoNoteRecorder: NSObject, ObservableObject, AVCaptureFileOutputRe
             finishAndReset(nil)
             return
         }
+
+        // Release the camera BEFORE the finalize re-encode runs. While the
+        // capture session is still live, the writer's encoder contends with
+        // it for the media hardware and its input can block forever in
+        // isReadyForMoreMediaData — the «Завершение…» hang.
+        await flushCaptureSessionForFinalization()
 
         fileValidationTask?.cancel()
         fileValidationTask = Task { @MainActor [weak self] in
@@ -467,17 +604,46 @@ final class VideoNoteRecorder: NSObject, ObservableObject, AVCaptureFileOutputRe
                 VideoNoteRecordingCompletionPolicy.wasRequestedOrReachedLimit(
                     stopRequested: wasStopRequested,
                     error: error,
-                    recordedDuration: inspection.duration,
+                    recordedDuration: self.segmentsTotalDuration
+                        + inspection.duration,
                     maximumDuration: VideoNoteStopPolicy.maximumCaptureDuration
                 ),
-                VideoNoteStopPolicy.isValidFinalDuration(inspection.duration)
+                VideoNoteStopPolicy.isValidFinalDuration(
+                    self.segmentsTotalDuration + inspection.duration
+                )
             {
-                self.finishAndReset(
-                    .success(
-                        Recording(
-                            url: url,
-                            duration: inspection.duration
-                        )))
+                let totalDuration =
+                    self.segmentsTotalDuration + inspection.duration
+                // Merge the flip segments back together (passthrough, no
+                // re-encode). The circle bubble crops the picture visually.
+                let finalization = await self.fileInspector.finalizeVideoNote(
+                    segments: self.recordedSegments + [url]
+                )
+                guard !Task.isCancelled,
+                    VideoNoteRecordingLifecycle.acceptsCompletion(
+                        activeURL: self.activeRecordingURL,
+                        outputURL: url
+                    )
+                else { return }
+                if let finalization {
+                    if finalization.url != url {
+                        try? FileManager.default.removeItem(at: url)
+                    }
+                    self.finishAndReset(
+                        .success(
+                            Recording(
+                                url: finalization.url,
+                                duration: finalization.duration
+                            )))
+                } else {
+                    // The transcode fell through; the raw file was already
+                    // validated, so send it uncropped instead of losing the
+                    // recording entirely.
+                    self.finishAndReset(
+                        .success(
+                            Recording(url: url, duration: totalDuration)
+                        ))
+                }
                 return
             }
 
@@ -545,6 +711,14 @@ final class VideoNoteRecorder: NSObject, ObservableObject, AVCaptureFileOutputRe
                 }
                 continuation.resume()
             }
+        }
+        // stopRunning is asynchronous: wait until the camera pipeline really
+        // released its media resources. The finalize re-encode must not start
+        // while the capture session still holds the encoder/muxer, otherwise
+        // the writer's inputs never become ready.
+        let stopDeadline = Date().addingTimeInterval(10)
+        while session.isRunning, Date() < stopDeadline {
+            try? await Task.sleep(nanoseconds: 100_000_000)
         }
     }
 
@@ -670,6 +844,17 @@ final class VideoNoteRecorder: NSObject, ObservableObject, AVCaptureFileOutputRe
         finalizationTimeoutTask = nil
         fileValidationTask?.cancel()
         fileValidationTask = nil
+        cameraSwitchContinuation = nil
+        cameraFlipTimeoutTask?.cancel()
+        cameraFlipTimeoutTask = nil
+        cameraFlipRequested = false
+        restartingSegmentForCameraFlip = false
+        let segments = recordedSegments
+        recordedSegments = []
+        segmentsTotalDuration = 0
+        for segment in segments {
+            try? FileManager.default.removeItem(at: segment)
+        }
         timer?.invalidate()
         timer = nil
         resetCaptureGraph()
@@ -683,6 +868,7 @@ final class VideoNoteRecorder: NSObject, ObservableObject, AVCaptureFileOutputRe
         isPrepared = false
         isRecording = false
         isUsingFrontCamera = true
+        hasAlternateCamera = false
         isMicrophoneMuted = false
         #if os(iOS)
             try? AVAudioSession.sharedInstance().setActive(
@@ -713,42 +899,27 @@ final class VideoNoteRecorder: NSObject, ObservableObject, AVCaptureFileOutputRe
             connection.isVideoMirrored = isUsingFrontCamera
         }
         #if os(iOS)
-            if #available(iOS 17.0, *) {
-                let angle = videoRotationAngle
-                if connection.isVideoRotationAngleSupported(angle) {
-                    connection.videoRotationAngle = angle
-                }
-            } else {
-                if connection.isVideoOrientationSupported {
-                    connection.videoOrientation = Self.currentVideoOrientation
-                }
+            // iOS records upright portrait at capture time; macOS keeps the
+            // camera's native landscape orientation (the circle bubble crops
+            // it visually).
+            let rotationAngle = videoRotationAngle
+            if connection.isVideoRotationAngleSupported(rotationAngle) {
+                connection.videoRotationAngle = rotationAngle
             }
         #endif
     }
 
     #if os(iOS)
         private var videoRotationAngle: CGFloat {
-            switch UIDevice.current.orientation {
-            case .portraitUpsideDown: return 180
-            case .landscapeLeft: return 90
-            case .landscapeRight: return 270
-            default: return 0
-            }
+            // The interface orientation is authoritative: it is what the user
+            // actually sees. The device sensor can claim landscape (or
+            // face-up) while the app stays portrait, and recording with the
+            // sensor value rotated portrait circles by 90 degrees.
+            VideoNoteRotationPolicy.angle(
+                for: VideoNoteRotationPolicy.currentInterfaceOrientation
+            )
         }
 
-        @available(iOS, deprecated: 17.0)
-        private static var currentVideoOrientation: AVCaptureVideoOrientation {
-            switch UIDevice.current.orientation {
-            case .portraitUpsideDown:
-                return .portraitUpsideDown
-            case .landscapeLeft:
-                return .landscapeRight
-            case .landscapeRight:
-                return .landscapeLeft
-            default:
-                return .portrait
-            }
-        }
     #endif
 
     #if os(iOS)
@@ -783,6 +954,14 @@ final class VideoNoteRecorder: NSObject, ObservableObject, AVCaptureFileOutputRe
                 continuation.resume()
             }
         }
+    }
+
+    private func hasCamera(at position: AVCaptureDevice.Position) -> Bool {
+        AVCaptureDevice.default(
+            .builtInWideAngleCamera,
+            for: .video,
+            position: position
+        ) != nil
     }
 
     private func configureCaptureGraph() async throws -> CaptureGraph {
@@ -883,6 +1062,141 @@ final class VideoNoteRecorder: NSObject, ObservableObject, AVCaptureFileOutputRe
 private actor VideoNoteFileInspector {
     struct Inspection: Sendable {
         let duration: TimeInterval
+    }
+
+    struct Finalization: Sendable {
+        let url: URL
+        let duration: TimeInterval
+    }
+
+    private struct Composition {
+        let asset: AVAsset
+        let videoTrack: AVMutableCompositionTrack
+        let transform: CGAffineTransform
+        let duration: TimeInterval
+    }
+
+    /// Hands the finished recording back for sending. Camera flips split a
+    /// recording into several .mov files, so the segments are merged back
+    /// Hands the finished recording back for sending. The capture is
+    /// already rotated to portrait at record time, so no re-encode is needed:
+    /// the raw file is sent as-is and camera flips are merged with a
+    /// passthrough export (audio and video stay bit-exact).
+    func finalizeVideoNote(segments: [URL]) async -> Finalization? {
+        videoNoteFinalizeLogger.info(
+            "finalize start segments=\(segments.count)"
+        )
+        if segments.count == 1 {
+            let duration =
+                (try? await AVURLAsset(url: segments[0]).load(.duration)
+                    .seconds) ?? 0
+            videoNoteFinalizeLogger.info("finalize raw")
+            return Finalization(url: segments[0], duration: max(0, duration))
+        }
+        videoNoteFinalizeLogger.info("finalize passthrough")
+        return await Self.passthroughMerge(segments: segments)
+    }
+
+    private static func composition(from urls: [URL]) async -> Composition? {
+        let composition = AVMutableComposition()
+        guard
+            let videoTrack = composition.addMutableTrack(
+                withMediaType: .video,
+                preferredTrackID: kCMPersistentTrackID_Invalid
+            )
+        else { return nil }
+        // The audio track is created lazily and only when a segment really
+        // has audio. An empty audio track breaks the macOS exporter.
+        var compositionAudioTrack: AVMutableCompositionTrack?
+        var cursor = CMTime.zero
+        var transform = CGAffineTransform.identity
+        var hasVideo = false
+        for url in urls {
+            let asset = AVURLAsset(url: url)
+            guard
+                let duration = try? await asset.load(.duration),
+                let source = try? await asset.loadTracks(withMediaType: .video)
+                    .first
+            else { return nil }
+            let range = CMTimeRange(start: .zero, duration: duration)
+            do {
+                try videoTrack.insertTimeRange(range, of: source, at: cursor)
+                if let audio = try? await asset.loadTracks(
+                    withMediaType: .audio
+                ).first {
+                    if compositionAudioTrack == nil {
+                        compositionAudioTrack = composition.addMutableTrack(
+                            withMediaType: .audio,
+                            preferredTrackID: kCMPersistentTrackID_Invalid
+                        )
+                    }
+                    if let compositionAudioTrack {
+                        try? compositionAudioTrack.insertTimeRange(
+                            range,
+                            of: audio,
+                            at: cursor
+                        )
+                    }
+                }
+            } catch {
+                return nil
+            }
+            if !hasVideo {
+                transform = source.preferredTransform
+                hasVideo = true
+            }
+            cursor = cursor + duration
+        }
+        videoTrack.preferredTransform = transform
+        return Composition(
+            asset: composition,
+            videoTrack: videoTrack,
+            transform: transform,
+            duration: cursor.seconds
+        )
+    }
+
+    private static func passthroughMerge(
+        segments: [URL]
+    ) async -> Finalization? {
+        guard let composition = await composition(from: segments) else {
+            return nil
+        }
+        guard let outputURL = finalizationOutputURL() else { return nil }
+        guard let exporter = AVAssetExportSession(
+            asset: composition.asset,
+            presetName: AVAssetExportPresetPassthrough
+        ) else { return nil }
+        exporter.outputURL = outputURL
+        exporter.outputFileType = .mov
+        exporter.shouldOptimizeForNetworkUse = true
+        do {
+            try await exporter.export(to: outputURL, as: .mov)
+        } catch {
+            try? FileManager.default.removeItem(at: outputURL)
+            return nil
+        }
+        guard exporter.status == .completed else {
+            try? FileManager.default.removeItem(at: outputURL)
+            return nil
+        }
+        return Finalization(url: outputURL, duration: composition.duration)
+    }
+
+    private static func finalizationOutputURL() -> URL? {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("LumaRecordings", isDirectory: true)
+        do {
+            try FileManager.default.createDirectory(
+                at: directory,
+                withIntermediateDirectories: true
+            )
+            return directory.appendingPathComponent(
+                "video-note-final-\(UUID().uuidString).mov"
+            )
+        } catch {
+            return nil
+        }
     }
 
     func inspect(url: URL, fallbackDuration: TimeInterval) async -> Inspection? {

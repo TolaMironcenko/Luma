@@ -121,6 +121,11 @@ final class AppModel: ObservableObject {
     private var lastSuccessfulMAMCursor: String?
     private var mamCheckpoints: [MAMArchiveKey: MAMArchiveCheckpoint] = [:]
     private var hasMoreOlderHistoryByConversation: [String: Bool] = [:]
+    /// Server-side cursor (RSM <first> of the last loaded page) for the next
+    /// interactive backward-history request, per conversation. The cursor
+    /// advances even when a page inserted nothing (reactions, duplicates), so
+    /// scrolling always moves toward genuinely older history.
+    private var olderHistoryCursorByConversation: [String: String] = [:]
     private var pendingRoomPasswords: [String: String] = [:]
     private var joiningRoomJIDs: Set<String> = []
     private var deletedGroupChatJIDs: Set<String> = []
@@ -737,12 +742,13 @@ final class AppModel: ObservableObject {
     func selectConversation(id: String) {
         let normalized = id.lowercased()
         selectedConversationID = normalized
-//        if let index = conversations.firstIndex(where: { $0.jid == normalized }) {
-//            conversations[index].unreadCount = 0
-//        }
-//        schedulePersist()
-//        syncWatch()
-//        hasMoreOlderHistory = true
+        // Opening the chat marks it as read, so the unread badge disappears
+        // immediately and stays in sync with the watch.
+        if let index = conversations.firstIndex(where: { $0.jid == normalized }) {
+            conversations[index].unreadCount = 0
+        }
+        schedulePersist()
+        syncWatch()
         if hasMoreOlderHistoryByConversation[normalized] == false,
            selectedMessages.isEmpty
         {
@@ -752,6 +758,17 @@ final class AppModel: ObservableObject {
             hasMoreOlderHistoryByConversation[normalized] = true
         }
         hasMoreOlderHistory = hasMoreOlderHistoryByConversation[normalized] ?? true
+    }
+
+    /// Called when the chat view disappears (back to the list, another chat
+    /// selected, or a mode switch). Without this, `selectedConversationID`
+    /// would keep pointing at the last viewed chat forever, and incoming
+    /// messages for it would never increment the unread badge again.
+    func endConversationViewing(jid: String) {
+        let normalized = jid.lowercased()
+        if selectedConversationID == normalized {
+            selectedConversationID = nil
+        }
     }
     
     func loadOlderHistoryForSelectedConversation() {
@@ -780,21 +797,37 @@ final class AppModel: ObservableObject {
 
         isLoadingOlderHistory = true
         let conversationID = conversation.jid.lowercased()
+        // Prefer the cursor the server returned with the previous page: it
+        // always points at genuinely older history. Fall back to the oldest
+        // local stanza id only when no server cursor is known yet (freshly
+        // opened conversation in this session).
+        let before =
+            olderHistoryCursorByConversation[conversationID]
+            ?? oldestServerID
         xmpp.loadOlderHistory(
             conversationJID: conversation.jid,
             isGroup: conversation.isGroup,
-            before: oldestServerID
+            before: before
         ) { [weak self] result in
             guard let self else { return }
             self.isLoadingOlderHistory = false
             switch result {
-            case .success(let hasMore):
-//                self.hasMoreOlderHistory = hasMore
-                self.hasMoreOlderHistoryByConversation[conversationID] = hasMore
+            case .success(let page):
+                if let nextBefore = page.nextBefore {
+                    self.olderHistoryCursorByConversation[conversationID] =
+                        nextBefore
+                } else {
+                    // Exhausted or the server stopped echoing RSM: never
+                    // re-request the same page in a loop.
+                    self.olderHistoryCursorByConversation[conversationID] = nil
+                }
+                self.hasMoreOlderHistoryByConversation[conversationID] =
+                    page.hasMore
                 if self.selectedConversationID == conversationID {
-                    self.hasMoreOlderHistory = hasMore
+                    self.hasMoreOlderHistory = page.hasMore
                 }
             case .failure(let error):
+                // Keep the cursor: the next scroll retries the same page.
                 self.errorMessage = error.localizedDescription
             }
         }
@@ -935,6 +968,7 @@ final class AppModel: ObservableObject {
         pendingRetractions = pendingRetractions.filter { !$0.key.hasPrefix(deletionKeyPrefix) }
         pendingReactions = pendingReactions.filter { !$0.key.hasPrefix(normalized + "|") }
         hasMoreOlderHistoryByConversation.removeValue(forKey: normalized)
+        olderHistoryCursorByConversation.removeValue(forKey: normalized)
         pendingRoomPasswords.removeValue(forKey: normalized)
         joiningRoomJIDs.remove(normalized)
         localChatStateByConversation.removeValue(forKey: normalized)

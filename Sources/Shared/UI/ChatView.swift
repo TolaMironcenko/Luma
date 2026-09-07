@@ -61,6 +61,10 @@ struct ChatView: View {
     @State private var isNearTimelineBottom = true
     @State private var historyLoadAnchorID: String?
     @State private var historyTopTriggerArmed = true
+    @State private var historyTopTriggerVisible = false
+    @State private var historyLoadEntryCount = 0
+    @State private var historyAutoContinueCount = 0
+    @State private var emptyHistoryRetryCount = 0
     @State private var activeCaptureMode: ComposerCaptureMode?
     @State private var preparingCaptureMode: ComposerCaptureMode?
     @State private var captureGestureIsActive = false
@@ -122,6 +126,10 @@ struct ChatView: View {
             initialValue: nil
         )
         _hasCompletedInitialScroll = State(initialValue: false)
+        _historyTopTriggerVisible = State(initialValue: false)
+        _historyLoadEntryCount = State(initialValue: 0)
+        _historyAutoContinueCount = State(initialValue: 0)
+        _emptyHistoryRetryCount = State(initialValue: 0)
         _isNearTimelineBottom = State(initialValue: true)
         _historyLoadAnchorID = State<String?>(initialValue: nil)
         _historyTopTriggerArmed = State(initialValue: true)
@@ -365,8 +373,12 @@ struct ChatView: View {
             isNearTimelineBottom = true
             historyLoadAnchorID = nil
             historyTopTriggerArmed = true
+            historyTopTriggerVisible = false
+            historyAutoContinueCount = 0
+            emptyHistoryRetryCount = 0
         }
         .onDisappear {
+            model.endConversationViewing(jid: conversation.jid)
             model.endComposerActivity(in: liveConversation)
             attachmentPreviewPresentationTask?.cancel()
             attachmentPreviewPresentationTask = nil
@@ -487,17 +499,16 @@ struct ChatView: View {
                                     .frame(height: 1)
                                     .accessibilityHidden(true)
                                     .onAppear {
+                                        historyTopTriggerVisible = true
                                         guard historyTopTriggerArmed,
                                             !model.isLoadingOlderHistory
                                         else { return }
-                                        historyTopTriggerArmed = false
-                                        historyLoadAnchorID =
-                                            timelineEntries.first?.id
-                                        model
-                                            .loadOlderHistoryForSelectedConversation()
+                                        triggerOlderHistoryLoad()
                                     }
                                     .onDisappear {
+                                        historyTopTriggerVisible = false
                                         historyTopTriggerArmed = true
+                                        historyAutoContinueCount = 0
                                     }
                                 if model.isLoadingOlderHistory {
                                     ProgressView()
@@ -653,13 +664,48 @@ struct ChatView: View {
                     .onChange(of: model.isLoadingOlderHistory) {
                         wasLoading,
                         isLoading in
-                        guard wasLoading, !isLoading,
-                            let anchor = historyLoadAnchorID
-                        else { return }
-                        Task { @MainActor in
-                            await Task.yield()
-                            proxy.scrollTo(anchor, anchor: .top)
+                        guard wasLoading, !isLoading else { return }
+                        // Restore the scroll position so the newly loaded
+                        // page appears above the previously visible one. Only
+                        // while the user is still at the top: a slow page must
+                        // never yank the timeline away from where the user
+                        // scrolled while it was loading.
+                        if let anchor = historyLoadAnchorID,
+                            historyTopTriggerVisible
+                        {
+                            Task { @MainActor in
+                                await Task.yield()
+                                proxy.scrollTo(anchor, anchor: .top)
+                                historyLoadAnchorID = nil
+                            }
+                        } else {
                             historyLoadAnchorID = nil
+                        }
+                        // The trigger is one-shot per visibility cycle.
+                        // Re-arm it whenever a load settles so the next
+                        // scroll gesture can fire again even if this page
+                        // inserted nothing.
+                        historyTopTriggerArmed = true
+                        if timelineEntries.isEmpty {
+                            handleEmptyHistoryLoadCompleted()
+                        } else if historyTopTriggerVisible {
+                            // The page left the sentinel on screen: it either
+                            // inserted no rows (reactions, duplicates) or the
+                            // anchor scroll did not push it away. While the
+                            // user stays at the top, continue through such
+                            // pages so scroll-up never appears dead. Every
+                            // page advances the server cursor, so this loop
+                            // is bounded by the archive itself.
+                            if timelineEntries.count
+                                == historyLoadEntryCount,
+                                model.hasMoreOlderHistory,
+                                historyAutoContinueCount < 6
+                            {
+                                historyAutoContinueCount += 1
+                                triggerOlderHistoryLoad()
+                            } else {
+                                historyAutoContinueCount = 0
+                            }
                         }
                     }
                     .onChange(of: timelineEntries.count) { _, _ in
@@ -1837,6 +1883,37 @@ struct ChatView: View {
             withAnimation(.easeOut(duration: 0.2)) { action() }
         } else {
             action()
+        }
+    }
+
+    /// Starts one interactive older-history page load from the top sentinel.
+    /// Remembers the first visible entry so the viewport can be restored when
+    /// the page arrives.
+    private func triggerOlderHistoryLoad() {
+        historyTopTriggerArmed = false
+        historyLoadAnchorID = timelineEntries.first?.id
+        historyLoadEntryCount = timelineEntries.count
+        model.loadOlderHistoryForSelectedConversation()
+    }
+
+    /// A finished load left the timeline empty. Retry a bounded number of
+    /// times with a short delay: the first page of an empty chat can fail
+    /// transiently (timeout, reconnect), and an empty timeline has no scroll
+    /// gesture that could retry it manually.
+    private func handleEmptyHistoryLoadCompleted() {
+        guard model.hasMoreOlderHistory,
+            !model.isLoadingOlderHistory,
+            emptyHistoryRetryCount < 3
+        else { return }
+        emptyHistoryRetryCount += 1
+        Task { @MainActor [weak model] in
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            guard !Task.isCancelled,
+                timelineEntries.isEmpty,
+                model?.hasMoreOlderHistory == true,
+                model?.isLoadingOlderHistory == false
+            else { return }
+            model?.loadOlderHistoryForSelectedConversation()
         }
     }
 
